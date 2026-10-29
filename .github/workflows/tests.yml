@@ -16,3 +16,38 @@ jobs:
       - run: python -m pip install -r requirements-dev.txt
       - run: python -W error::RuntimeWarning -m unittest discover -s tests -v
       - run: python install.py --help
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path rust/Cargo.toml --check
+      - run: cargo test --locked --manifest-path rust/Cargo.toml
+      - run: cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s rust/tests -v
+      - run: python rust/install-luna.py --help
+  luna-package:
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install cargo-zigbuild==0.24.0 ziglang==0.13.0
+      - run: cargo-zigbuild zigbuild --locked --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml
+      - run: python rust/package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alice-apple-music-luna-aarch64
+          path: |
+            dist/*.yap
+            dist/*.yap.sha256

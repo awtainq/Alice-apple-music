@@ -1,0 +1,16 @@
+id = "alice-apple-music"
+name = "Alice × Apple Music"
+version = "0.2.0"
+entry = "bin/alice-apple-music"
+description = "Apple Music по голосу: песни, очередь, рекомендации и название трека. Нативный Rust, без Python на колонке."
+permissions = ["exec"]
+
+[launch]
+kind = "binary"
+mode = "service"
+path = "bin/alice-apple-music"
+args = ["--luna", "--local-voice", "--private", "../../apple-music-private", "--cache", "/tmp/alice-apple-music-cache"]
+
+[compatibility]
+models = ["yandexstation_2", "yandexmidi"]
+features = []

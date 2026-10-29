@@ -1,3 +1,6 @@
+Rust edition in rust/: GPL-3.0-only; see rust/LICENSE and rust/NOTICE.
+The following notices describe the original Python implementation (Apache-2.0).
+
 Apple Music subscription playback and recommendations protocol adapted from:
 Music Assistant, https://github.com/music-assistant/server (Apache License 2.0).
 See third_party/LICENSE-MusicAssistant.

@@ -46,3 +46,6 @@ dist/
 build/
 my-profile/
 *.failed/
+
+# Rust build artifacts
+target/

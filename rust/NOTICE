@@ -1,0 +1,23 @@
+Alice × Apple Music — Rust / Luna edition
+Copyright 2026 Alice-apple-music contributors.
+Rust sources and the linked native executable: GPL-3.0-only.
+The Python implementation elsewhere in this repository remains Apache-2.0.
+
+This executable links widevine 0.1.0, a GPL-3.0 library by ThetaDev:
+https://crates.io/crates/widevine/0.1.0
+https://codeberg.org/ThetaDev/widevine-rs
+Dependency versions and checksums are pinned in rust/Cargo.lock.
+Corresponding application source and build instructions:
+https://github.com/awtainq/Alice-apple-music/tree/v0.2.0/rust
+
+Apple Music subscription playback and recommendations protocol adapted from
+Music Assistant (Apache-2.0): https://github.com/music-assistant/server
+Glagol audio_play protocol adapted from AlexxIT/YandexStation (MIT):
+https://github.com/AlexxIT/YandexStation
+Local voice IPC documented by Marker284/yandex-station-extended (CC BY 4.0),
+rison1337/Alisa-ChatGPT-voice-assistant, YSE contrib/alice-say.py and
+v3rt3p/quasar-protos. This Rust transport is an independent implementation.
+See the repository's root NOTICE and third_party/ for upstream notices.
+
+No authentication credentials, private client material, audio, FFmpeg,
+Python runtime or AirPlay binaries are included in the Luna package.
