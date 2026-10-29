@@ -33,22 +33,40 @@ async fn main() {
         std::process::exit(1);
     }
 }
+// Luna 0.2.0 for Midi uses the original YAM-prefixed runtime credentials.
+fn luna_runtime(get: impl Fn(&str) -> Option<String>) -> Result<(String, String, &'static str)> {
+    let (url, token, header) = match (get("LUNA_API_URL"), get("LUNA_API_TOKEN")) {
+        (Some(url), Some(token)) => (url, token, "x-luna-token"),
+        (None, None) => (
+            get("YAM_API_URL").ok_or_else(|| anyhow::anyhow!("Missing Luna runtime URL"))?,
+            get("YAM_API_TOKEN").ok_or_else(|| anyhow::anyhow!("Missing Luna runtime token"))?,
+            "x-yam-token",
+        ),
+        _ => anyhow::bail!("Incomplete Luna runtime credentials"),
+    };
+    let parsed = reqwest::Url::parse(&url)?;
+    ensure!(
+        parsed.scheme() == "http"
+            && parsed.host_str() == Some("127.0.0.1")
+            && parsed.username().is_empty()
+            && parsed.password().is_none(),
+        "Luna runtime must be local"
+    );
+    ensure!(!token.is_empty(), "Empty Luna runtime token");
+    Ok((url, token, header))
+}
 async fn run() -> Result<()> {
     let a = Args::parse();
     // Luna grants exec to this trusted native plugin. Validate runtime identity before opening local IPC.
     if a.luna {
-        let url = std::env::var("LUNA_API_URL")?;
-        let token = std::env::var("LUNA_API_TOKEN")?;
-        ensure!(
-            url.starts_with("http://127.0.0.1:"),
-            "Luna runtime must be local"
-        );
+        let (url, token, header) = luna_runtime(|name| std::env::var(name).ok())?;
         let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(5))
             .build()?;
         let response = client
             .get(format!("{url}/device"))
-            .header("x-luna-token", token)
+            .header(header, token)
             .send()
             .await
             .map_err(|_| anyhow::anyhow!("Luna runtime unavailable"))?;
@@ -119,4 +137,49 @@ async fn run() -> Result<()> {
     actor.abort();
     result?;
     Ok(())
+}
+
+#[cfg(test)]
+mod luna_runtime_tests {
+    use super::*;
+    fn read(values: &[(&str, &str)], key: &str) -> Option<String> {
+        values
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| value.to_string())
+    }
+    #[test]
+    fn supports_midi_luna_020() {
+        let values = [
+            ("YAM_API_URL", "http://127.0.0.1:8098/api/runtime/test"),
+            ("YAM_API_TOKEN", "fixture"),
+        ];
+        let (_, token, header) = luna_runtime(|key| read(&values, key)).unwrap();
+        assert_eq!(header, "x-yam-token");
+        assert_eq!(token, "fixture");
+    }
+    #[test]
+    fn modern_runtime_uses_modern_header() {
+        let values = [
+            ("LUNA_API_URL", "http://127.0.0.1:8098/api/runtime/test"),
+            ("LUNA_API_TOKEN", "fixture"),
+        ];
+        assert_eq!(
+            luna_runtime(|key| read(&values, key)).unwrap().2,
+            "x-luna-token"
+        );
+    }
+    #[test]
+    fn rejects_partial_or_external_runtime() {
+        let partial = [
+            ("LUNA_API_URL", "http://127.0.0.1:8098"),
+            ("YAM_API_TOKEN", "fixture"),
+        ];
+        assert!(luna_runtime(|key| read(&partial, key)).is_err());
+        let external = [
+            ("YAM_API_URL", "http://127.0.0.1:8098@example.com"),
+            ("YAM_API_TOKEN", "fixture"),
+        ];
+        assert!(luna_runtime(|key| read(&external, key)).is_err());
+    }
 }

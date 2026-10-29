@@ -5,7 +5,7 @@ description: Apple Music по голосу на Станции Миди — па
 homepage: https://github.com/awtainq/Alice-apple-music
 # Yandex Station Midi; other models are not claimed compatible.
 targets: [yandexmidi]
-depends: [yam/luna >=0.2.7]
+depends: [yam/luna =0.2.0]
 files:
   bin/awtainq-apple-music: ../rust/target/$YAM_TRIPLE/release/awtainq-apple-music
   share/awtainq.apple-music/apple-music.yap: ../dist/alice-apple-music-luna-0.2.2-aarch64.yap
