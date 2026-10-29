@@ -62,3 +62,24 @@ Cargo настроен на включённый `vendor/`; используйт
 Сам компилятор и средства кросс-компиляции в архив не включены.
 
 Лицензия связанного бинарного файла — **GPL-3.0-only**; см. LICENSE и NOTICE.
+
+## Пакет реестра YAM
+
+`luna-import/` — отдельная нативная команда `awtainq-apple-music` без внешних
+библиотек. Она находит соседний с собой `.yap` в payload YAM, останавливает
+предыдущий сервис и загружает пакет только на `127.0.0.1`. Порт задаётся числом.
+Запрос запуска отправляется только после успешной загрузки. Личные токены
+команда не читает. Удалением импортированного плагина управляет Luna.
+
+`bash rust/build.sh --zig` также собирает эту команду. Затем официальный
+инструмент YAM создаёт `.yampkg` из [yam/yam.yaml](../yam/yam.yaml):
+
+```sh
+yam-publish pack --source yam --platform yandexstation_2 \
+  --profiles /путь/к/yam/platforms \
+  --output dist/awtainq-apple-music-0.2.1-yandexstation_2.yampkg
+```
+
+В `.yampkg` включается уже собранный `.yap`; сначала выполните `xtask package`.
+Для подписи и загрузки нужны собственные namespace, ключ автора и publish-токен.
+Храните их вне репозитория. Процедура: [YAM Publishing](https://github.com/nyakokitsu/yam/blob/main/docs/PUBLISHING.md).

@@ -1,0 +1,14 @@
+name: awtainq/apple-music
+version: 0.2.1
+license: GPL-3.0-only
+description: Apple Music по голосу на Станции 2 — пакет .yap и импорт в Luna
+homepage: https://github.com/awtainq/Alice-apple-music
+# Commercial Station 2; other models are not claimed compatible.
+targets: [yandexstation_2]
+depends: [yam/luna >=0.2.7]
+files:
+  bin/awtainq-apple-music: ../rust/target/$YAM_TRIPLE/release/awtainq-apple-music
+  share/awtainq.apple-music/apple-music.yap: ../dist/alice-apple-music-luna-0.2.1-aarch64.yap
+  share/awtainq.apple-music/README.md: README.md
+  share/awtainq.apple-music/LICENSE: ../LICENSE
+  share/awtainq.apple-music/NOTICE: ../NOTICE

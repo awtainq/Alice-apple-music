@@ -39,6 +39,6 @@ strip = true
 panic = "abort"
 
 [workspace]
-members = ["xtask"]
+members = ["xtask", "luna-import"]
 default-members = ["."]
 resolver = "2"

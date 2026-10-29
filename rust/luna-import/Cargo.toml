@@ -1,0 +1,10 @@
+[package]
+name = "luna-import"
+version = "0.2.1"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[[bin]]
+name = "awtainq-apple-music"
+path = "src/main.rs"
