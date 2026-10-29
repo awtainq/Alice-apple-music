@@ -1,6 +1,6 @@
 # Проверка на колонке
 
-29 октября 2026 года: рутованная Станция 2, `yandex,station-midi`, ARM64,
+29 октября 2026 года: рутованная Станция Миди, `yandex,station-midi`, ARM64,
 firmware `0.372.1.8.4790676133.20261019.298`. Luna — ветка PR nyakokitsu/luna#3;
 FFmpeg Entware 6.1.4.
 

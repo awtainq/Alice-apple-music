@@ -1,6 +1,6 @@
 id = "alice-apple-music"
 name = "Alice × Apple Music"
-version = "0.2.1"
+version = "0.2.2"
 entry = "bin/alice-apple-music"
 description = "Apple Music по голосу: песни, очередь, рекомендации и название трека. Нативный плеер для Luna."
 permissions = ["exec"]
@@ -12,5 +12,5 @@ path = "bin/alice-apple-music"
 args = ["--luna", "--local-voice", "--private", "../../apple-music-private", "--cache", "/tmp/alice-apple-music-cache"]
 
 [compatibility]
-models = ["yandexstation_2", "yandexmidi"]
+models = ["yandexmidi"]
 features = []

@@ -8,7 +8,7 @@
 [![Tests](https://github.com/awtainq/Alice-apple-music/actions/workflows/tests.yml/badge.svg)](https://github.com/awtainq/Alice-apple-music/actions/workflows/tests.yml)
 ![Rust](https://img.shields.io/badge/Rust-native-303549)
 ![Luna](https://img.shields.io/badge/Luna-.yap-303549)
-![Platform](https://img.shields.io/badge/Станция_2-root_·_ARM64-303549)
+![Platform](https://img.shields.io/badge/Станция_Миди-root_·_ARM64-303549)
 
 [Скачать .yap](https://github.com/awtainq/Alice-apple-music/releases/latest) · [Установка](#установка-через-luna) · [Команды](#голосовые-команды) · [Авторизация](docs/AUTH.md)
 
@@ -16,7 +16,7 @@
 
 ## Музыка без отдельного сервера
 
-Неофициальный мод для **Яндекс Станции 2 с root, Entware и Luna**.
+Неофициальный мод для **Яндекс Станции Миди с root, Entware и Luna**.
 Один нативный процесс Rust: поиск в подписке Apple Music, очередь,
 предзагрузка следующей песни и автоматическое продолжение рекомендациями.
 
@@ -39,10 +39,10 @@
 
 Нужны root, ARM64 Entware с `/opt/bin/ffmpeg` и Luna с поддержкой локальных
 binary-service `.yap`. В Luna должно быть разрешено `allow_plugin_binaries = true`.
-Проверено на Станции 2 с device tree `yandex,station-midi` (Luna: `yandexmidi`).
+Проверено на Станции Миди с device tree `yandex,station-midi` (Luna: `yandexmidi`).
 Другие модели пока не проверены.
 
-1. Скачайте **`alice-apple-music-luna-0.2.1-aarch64.yap`** из
+1. Скачайте **`alice-apple-music-luna-0.2.2-aarch64.yap`** из
    [Releases](https://github.com/awtainq/Alice-apple-music/releases/latest).
 2. В Luna откройте **«Установка .yap»**, выберите файл и загрузите его.
 3. При первой установке добавьте собственный [профиль Apple Music и Яндекса](docs/AUTH.md)
@@ -95,7 +95,7 @@ YAM устанавливает файлы пакета, но не запуска
 
 ## Ресурсы
 
-На проверенной Станции 2 процесс занимал около **5 МиБ ОЗУ**, приложение —
+На проверенной Станции Миди процесс занимал около **5 МиБ ОЗУ**, приложение —
 около **5,5 МиБ**, пакет — около **2,5 МиБ**. Это замеры одной установки,
 не пиковое потребление. Отдельно расходуют память Luna, аудиокэш и FFmpeg
 при подготовке песни. AAC копируется без перекодирования.

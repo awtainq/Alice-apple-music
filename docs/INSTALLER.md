@@ -1,6 +1,6 @@
 # Установка пакета .yap
 
-Нужны рутованная Станция 2, ARM64 Entware с `/opt/bin/ffmpeg` и Luna,
+Нужны рутованная Станция Миди, ARM64 Entware с `/opt/bin/ffmpeg` и Luna,
 поддерживающая локальные binary-service `.yap`. Разрешите
 `allow_plugin_binaries = true` в настройках Luna.
 
@@ -29,7 +29,7 @@ ssh -p 2222 -N -L 18098:127.0.0.1:8098 root@IP_КОЛОНКИ
 В другом терминале компьютера загрузите скачанный пакет:
 
 ```sh
-curl --fail-with-body -F 'package=@alice-apple-music-luna-0.2.1-aarch64.yap' \
+curl --fail-with-body -F 'package=@alice-apple-music-luna-0.2.2-aarch64.yap' \
   http://127.0.0.1:18098/api/plugins
 ```
 

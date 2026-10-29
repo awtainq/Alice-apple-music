@@ -7,7 +7,7 @@ https://crates.io/crates/widevine/0.1.0
 https://codeberg.org/ThetaDev/widevine-rs
 Dependency versions and checksums are pinned in rust/Cargo.lock.
 Corresponding application source and build instructions:
-https://github.com/awtainq/Alice-apple-music/tree/v0.2.1/rust
+https://github.com/awtainq/Alice-apple-music/tree/v0.2.2/rust
 
 Apple Music subscription playback and recommendations protocol adapted from
 Music Assistant (Apache-2.0): https://github.com/music-assistant/server

@@ -1,11 +1,11 @@
 # Alice × Apple Music · Luna
 
-Нативный плеер Apple Music для рутованной Станции 2: один процесс Rust,
+Нативный плеер Apple Music для рутованной Станции Миди: один процесс Rust,
 голосовой поиск, очередь, рекомендации и название трека.
 
 ## Установка
 
-Скачайте `alice-apple-music-luna-0.2.1-aarch64.yap` из
+Скачайте `alice-apple-music-luna-0.2.2-aarch64.yap` из
 [Releases](https://github.com/awtainq/Alice-apple-music/releases/latest) и загрузите
 его в Luna через **«Установка .yap»**. Добавьте личный профиль и включите сервис
 **Alice × Apple Music** (`alice-apple-music`).
@@ -75,9 +75,9 @@ Cargo настроен на включённый `vendor/`; используйт
 инструмент YAM создаёт `.yampkg` из [yam/yam.yaml](../yam/yam.yaml):
 
 ```sh
-yam-publish pack --source yam --platform yandexstation_2 \
+yam-publish pack --source yam --platform yandexmidi \
   --profiles /путь/к/yam/platforms \
-  --output dist/awtainq-apple-music-0.2.1-yandexstation_2.yampkg
+  --output dist/awtainq-apple-music-0.2.2-yandexmidi.yampkg
 ```
 
 В `.yampkg` включается уже собранный `.yap`; сначала выполните `xtask package`.

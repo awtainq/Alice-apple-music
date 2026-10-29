@@ -1,7 +1,7 @@
 # Apple Music для Luna · YAM
 
 Пакет `awtainq/apple-music` содержит готовый `.yap` и небольшую нативную команду
-его импорта в Luna. Проверена рутованная Станция 2 (`yandexstation_2`), ARM64.
+его импорта в Luna. Проверена рутованная Станция Миди (`yandexmidi`), ARM64.
 
 ## Установка
 
@@ -55,6 +55,6 @@ YAM владеет только командой импорта и исходн�
 GPL-3.0-only. Полные соответствующие исходники и сборка:
 [GitHub](https://github.com/awtainq/Alice-apple-music),
 [Releases](https://github.com/awtainq/Alice-apple-music/releases).
-Архив `alice-apple-music-yam-0.2.1-source.tar.gz` включает исходники команды
+Архив `alice-apple-music-0.2.2-source.tar.gz` включает исходники команды
 импорта и закреплённые зависимости. Личные токены, ключи клиента и музыка
 не распространяются.

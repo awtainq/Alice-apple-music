@@ -23,7 +23,7 @@ my-profile/
 | `yandex_music_token` | Токен владельца Станции для Glagol |
 | `yandex_x_token` | Токен обновления Яндекса, дающий доступ шире одной колонки |
 | `station_device_id` | Серийный идентификатор своей Станции |
-| `station_platform` | Для проверенной Станции 2 — `yandexmidi` |
+| `station_platform` | Для проверенной Станции Миди — `yandexmidi` |
 | `agent_token` | Случайная строка для локального API, например результат `openssl rand -hex 32` |
 | `client_id.bin`, `private_key.pem` | Собственные разрешённые данные уже авторизованного клиента воспроизведения |
 
