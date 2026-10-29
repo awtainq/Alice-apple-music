@@ -16,6 +16,9 @@ class PackageTests(unittest.TestCase):
     def test_checksum_mismatch_rejected(self):
         one=package.build(self.binary,self.path/'one.yap');one.with_suffix('.yap.sha256').write_text('00 invalid\n')
         with self.assertRaisesRegex(ValueError,'SHA256'):installer.validate_package(one)
+    def test_personal_build_path_rejected(self):
+        self.binary.write_bytes(self.binary.read_bytes()+str(pathlib.Path.home()).encode())
+        with self.assertRaisesRegex(ValueError,'Personal build paths'):package.build(self.binary,self.path/'leak.yap')
     def test_host_binary_rejected(self):
         self.binary.write_bytes(b'not an ARM ELF file................')
         with self.assertRaisesRegex(ValueError,'ARM64'):package.build(self.binary,self.path/'bad.yap')

@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install cargo-zigbuild==0.24.0 ziglang==0.13.0
-      - run: cargo-zigbuild zigbuild --locked --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml
+      - run: python rust/build.py --zig
       - run: python rust/package.py
       - uses: actions/upload-artifact@v4
         with:

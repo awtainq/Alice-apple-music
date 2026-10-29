@@ -67,13 +67,12 @@ Rust stable, ARM64 musl target; на Linux с установленным musl cr
 
 ```sh
 cargo test --locked --manifest-path rust/Cargo.toml
-cargo build --locked --release --target aarch64-unknown-linux-musl \
-  --manifest-path rust/Cargo.toml
+python3 rust/build.py
 python3 rust/package.py
 ```
 
 На macOS можно использовать `cargo zigbuild` с Zig 0.13 и cargo-zigbuild
-вместо `cargo build`. `package.py` создаёт воспроизводимый tar.gz `.yap`
+через `python3 rust/build.py --zig`. `package.py` создаёт воспроизводимый tar.gz `.yap`
 и SHA256, не включает профиль, target, аудио или зависимости Python.
 
 Rust-часть и связанный бинарный файл — **GPL-3.0-only** из-за библиотеки

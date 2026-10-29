@@ -7,6 +7,8 @@ def build(binary,output=None):
     binary=pathlib.Path(binary);raw=binary.read_bytes()
     if raw[:4]!=b'\x7fELF' or raw[4]!=2 or int.from_bytes(raw[18:20],'little')!=183:
         raise ValueError('Expected an ARM64 ELF binary, built for aarch64-unknown-linux-musl')
+    if str(pathlib.Path.home()).encode() in raw or str(ROOT.parent).encode() in raw:
+        raise ValueError('Personal build paths found; rebuild with rust/build.py before publication')
     manifest=(ROOT/'luna/plugin.toml').read_bytes()
     version=tomllib.loads(manifest.decode())['version']
     output=pathlib.Path(output) if output else ROOT.parent/'dist'/f'alice-apple-music-luna-{version}-aarch64.yap'
