@@ -97,8 +97,13 @@ def main():
     if not private.exists():
         if not (target/'private').is_dir():raise RuntimeError('Нет личного профиля.')
         shutil.copytree(target/'private',private)
-    elif (target/'private/queue.json').exists() and not (private/'queue.json').exists():
-        shutil.copyfile(target/'private/queue.json',private/'queue.json')
+    else:
+        if (target/'private/config.json').exists():
+            merged=json.loads((target/'private/config.json').read_text())
+            merged.update(json.loads((private/'config.json').read_text()))
+            (private/'config.json').write_text(json.dumps(merged,ensure_ascii=False,indent=2)+'\n')
+        if (target/'private/queue.json').exists() and not (private/'queue.json').exists():
+            shutil.copyfile(target/'private/queue.json',private/'queue.json')
     private.chmod(0o700)
     for name in ('config.json','client_id.bin','private_key.pem'):
         if not (private/name).is_file():raise RuntimeError('Неполный профиль: '+name)
@@ -118,6 +123,11 @@ def main():
 
 
 if __name__=='__main__':
-    try:main()
+    try:
+        import fcntl
+        with open('/tmp/alice-music-installer.lock','a') as lock:
+            os.chmod('/tmp/alice-music-installer.lock',0o600)
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            main()
     except Exception as error:
         print('Ошибка установки: '+str(error),file=sys.stderr);sys.exit(1)
