@@ -1,0 +1,24 @@
+[Unit]
+Description=Apple Music direct Alice voice commands
+Requires=alice-music.service alice-music-voice-tunnel.service
+After=alice-music.service alice-music-voice-tunnel.service
+
+[Service]
+User=alice-music
+Group=alice-music
+WorkingDirectory=/opt/alice-music/app
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/alice-music/venv/bin/python /opt/alice-music/app/voice.py --config /var/lib/alice-music/private/config.json --spotter-ssh
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryHigh=48M
+MemoryMax=96M
+
+[Install]
+WantedBy=multi-user.target

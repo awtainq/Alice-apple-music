@@ -1,0 +1,3 @@
+[Service]
+ExecStart=
+ExecStart=/opt/alice-music/venv/bin/python /opt/alice-music/app/service.py --private /var/lib/alice-music/private --cache /var/cache/alice-music --no-cloud

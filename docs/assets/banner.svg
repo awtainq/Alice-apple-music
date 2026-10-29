@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="420" viewBox="0 0 1440 420">
+ <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#0b1020"/><stop offset="1" stop-color="#241239"/></linearGradient><linearGradient id="accent" x2="1" y2="1"><stop stop-color="#a88bff"/><stop offset="1" stop-color="#ff537e"/></linearGradient><radialGradient id="glow"><stop stop-color="#a88bff" stop-opacity=".2"/><stop offset="1" stop-color="#a88bff" stop-opacity="0"/></radialGradient></defs>
+ <rect width="1440" height="420" rx="28" fill="url(#bg)"/>
+ <circle cx="1160" cy="210" r="280" fill="url(#glow)"/>
+ <g fill="none" stroke="url(#accent)"><circle cx="1170" cy="208" r="119" stroke-width="2" opacity=".4"/><circle cx="1170" cy="208" r="92" stroke-width="2" opacity=".65"/><circle cx="1170" cy="208" r="63" stroke-width="3"/></g>
+ <g stroke="url(#accent)" stroke-width="8" stroke-linecap="round"><path d="M1118 200v16m20-40v64m20-82v100m20-118v136m20-106v76m20-56v36"/></g>
+ <text x="72" y="105" fill="#bfa9ff" font-family="Arial,sans-serif" font-size="17" letter-spacing="5">МУЗЫКА ЖИВЁТ НА КОЛОНКЕ</text>
+ <text x="68" y="185" fill="#fff" font-family="Arial,sans-serif" font-weight="700" font-size="66">Alice × Apple Music</text>
+ <text x="72" y="243" fill="#c5c7db" font-family="Arial,sans-serif" font-size="25">Голос. Любимые песни. Бесконечная очередь.</text>
+ <g font-family="Arial,sans-serif" font-size="17" fill="#e4dcff"><rect x="72" y="292" width="176" height="45" rx="22" fill="#ffffff" fill-opacity=".07"/><text x="98" y="321">Без VPS и Docker</text><rect x="264" y="292" width="160" height="45" rx="22" fill="#ffffff" fill-opacity=".07"/><text x="287" y="321">Станция 2 · root</text><rect x="440" y="292" width="175" height="45" rx="22" fill="#ffffff" fill-opacity=".07"/><text x="466" y="321">Установка по SSH</text></g>
+</svg>

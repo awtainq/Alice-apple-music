@@ -1,0 +1,20 @@
+[Unit]
+Description=Private SSH tunnel to Alice recognition IPC
+Requires=alice-music-vpn.service
+After=network-online.target alice-music-vpn.service
+
+[Service]
+User=alice-music
+Group=alice-music
+ExecStart=/usr/bin/ssh -F /var/lib/alice-music/private/voice_ssh_config -NT station-music
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+CapabilityBoundingSet=
+MemoryMax=32M
+
+[Install]
+WantedBy=multi-user.target

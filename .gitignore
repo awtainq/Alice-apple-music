@@ -1,0 +1,48 @@
+# Personal configuration, credentials and state
+private/
+cache/
+work/
+config.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.wvd
+client_id.bin
+pubsub-home.json
+*service-account*.json
+queue.json
+commands.sqlite3*
+*.log
+
+# Downloaded/prepared audio
+*.m4a
+*.mp3
+*.aac
+*.opus
+*.download
+
+# Python and editor files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+.idea/
+.vscode/
+
+# VPN configs and exported secrets (examples remain tracked)
+*.conf
+*-token.txt
+bind-code.txt
+*-key.json
+*-credentials.json
+*.sqlite3*
+
+# Release builds and local installer inputs
+dist/
+build/
+my-profile/
+*.failed/

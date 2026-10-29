@@ -1,0 +1,19 @@
+#!/bin/sh
+# Local Apple Music player; remove this file to disable boot startup.
+BASE=/data/opt/alice-music
+case "$1" in
+ start)
+  (
+   n=0
+   while [ "$n" -lt 120 ]; do
+    if [ -x /opt/bin/python3 ] && [ -x "$BASE/launch.sh" ] && [ -s "$BASE/private/config.json" ]; then
+     "$BASE/launch.sh" start
+     exit $?
+    fi
+    n=$((n+1));sleep 1
+   done
+  ) </dev/null >/dev/null 2>&1 &
+  ;;
+ stop) [ ! -x "$BASE/launch.sh" ] || "$BASE/launch.sh" stop ;;
+esac
+exit 0
