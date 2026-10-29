@@ -68,6 +68,12 @@ class Accept(unittest.IsolatedAsyncioTestCase):
   self.v.ipc_writer=MagicMock();self.v.ipc_writer.drain=AsyncMock()
   await self.v.accept(3,'дальше')
   self.v.ipc_writer.write.assert_called_once_with(cancel_frame())
+ async def test_first_hour_after_boot_is_not_previous_music_activity(self):
+  from unittest.mock import patch
+  self.v.status.return_value={'state':'stopped','current':None}
+  with patch('voice.time.monotonic',return_value=100):
+   await self.v.accept(3,'дальше',source='spotter')
+  self.assertTrue(self.v.queue.empty())
  async def test_builtin_player_not_claimed(self):
   self.v.status.return_value={'state':'playing','station_stream_id':'yandex:other'}
   await self.v.accept(3,'дальше');self.assertTrue(self.v.queue.empty())

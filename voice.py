@@ -188,7 +188,7 @@ class Voice:
             # Luna routes transport to the live sender. Do not also advance or
             # resume our saved queue, nor cancel Luna's claimed voice request.
             return
-        recent = (now-self.active_at < 3600 or
+        recent = (self.active_at>0 and now-self.active_at < 3600 or
                   str(status.get('station_stream_id', '')).startswith('alice-music-light:') or
                   candidate[0]=='announce_now' and bool(status.get('current')) or
                   source=='spotter' and bool(status.get('current')))
