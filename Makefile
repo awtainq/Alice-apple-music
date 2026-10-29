@@ -1,17 +1,15 @@
-PYTHON ?= python3
 CARGO ?= cargo
 
-.PHONY: test test-legacy package run
+.PHONY: test package source run
 
 test:
-	$(CARGO) test --locked --manifest-path rust/Cargo.toml
-	$(PYTHON) -m unittest discover -s rust/tests -v
-
-test-legacy:
-	$(PYTHON) -m unittest discover -s tests -v
+	$(CARGO) test --locked --workspace --manifest-path rust/Cargo.toml
 
 package:
-	$(PYTHON) rust/package.py
+	$(CARGO) run --locked --manifest-path rust/Cargo.toml -p xtask -- package
+
+source:
+	$(CARGO) run --locked --manifest-path rust/Cargo.toml -p xtask -- source
 
 run:
 	$(CARGO) run --manifest-path rust/Cargo.toml -- --private private --cache cache --local-voice

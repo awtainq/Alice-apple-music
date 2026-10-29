@@ -1,80 +1,64 @@
-# Alice × Apple Music · Rust + Luna
+# Alice × Apple Music · Luna
 
-Нативный плеер Apple Music для рутованной Яндекс Станции 2. Один процесс Rust,
-очередь и рекомендации Apple Music, управление голосом без имени навыка.
-Python на колонке не нужен. FFmpeg запускается только при подготовке AAC,
-аудио не перекодируется.
+Нативный плеер Apple Music для рутованной Станции 2: один процесс Rust,
+голосовой поиск, очередь, рекомендации и название трека.
 
 ## Установка
 
-Нужны root, ARM64 Entware с `/opt/bin/ffmpeg`, настроенный Luna с поддержкой
-локальных binary-service `.yap` и разрешением `allow_plugin_binaries = true`.
-Проверяемая модель — Станция 2 (`yandex,station-midi`, Luna `yandexmidi`).
-Другие модели не тестировались. Пакет использует root/exec и напрямую читает
-локальный IPC распознавания и журнал command spotter для произвольных названий
-песен; изоляции от аккаунта/системы у него нет.
+Скачайте `alice-apple-music-luna-0.2.1-aarch64.yap` из
+[Releases](https://github.com/awtainq/Alice-apple-music/releases/latest) и загрузите
+его в Luna через **«Установка .yap»**. Добавьте личный профиль и включите сервис
+**Alice × Apple Music** (`alice-apple-music`).
 
-На компьютере нужны Python 3.11+ и OpenSSH. Плеер Python 0.1.x на колонке
-можно мигрировать, сохранив профиль и очередь:
+Нужны ARM64 Entware с `/opt/bin/ffmpeg`, совместимая Luna с поддержкой локальных
+binary services и разрешением `allow_plugin_binaries = true`.
 
-```sh
-python3 rust/install-luna.py --host IP_КОЛОНКИ --port 2222 \
-  --package dist/alice-apple-music-luna-0.2.0-aarch64.yap
-```
+[Инструкция установки](https://github.com/awtainq/Alice-apple-music/blob/main/docs/INSTALLER.md) ·
+[Авторизация](https://github.com/awtainq/Alice-apple-music/blob/main/docs/AUTH.md)
 
-Для новой установки добавьте `--profile /путь/к/my-profile`. Состав профиля
-описан в [AUTH.md](../docs/AUTH.md): `config.json`, `client_id.bin`,
-`private_key.pem`. Только собственные авторизованные данные. Установщик
-сохраняет их вне пакета: `/data/opt/luna/data/apple-music-private` с правами
-700/600. Обновление `.yap` их не удаляет. Не помещайте профиль в GitHub.
+Пакет использует root/exec и напрямую читает локальный IPC и command spotter
+для произвольных названий песен. Профиль и очередь находятся вне пакета,
+в соседнем с `plugins/` каталоге `apple-music-private`. Обновление `.yap` их
+не удаляет. Кэш находится в `/tmp/alice-apple-music-cache`.
 
-Установщик соединяется с Luna через временный SSH-туннель. Он не открывает
-API в домашнюю сеть. Python-сервис останавливается перед включением Rust;
-при ошибке проверки запускается обратно. Его файлы остаются для отката.
-Старый init отключается через маркер, без записи в read-only корень.
+## Локальный API
 
-В Luna пакет называется **Alice × Apple Music**, id `alice-apple-music`.
-Можно остановить/запустить или отключить автозапуск через service controls Luna.
-На этой версии Luna native `.yap` поддерживается локально, binary-пакеты
-из YAM v2 отклоняются. Публикация в YAM — отдельный следующий этап.
+Только `127.0.0.1:8099`. GET `/api` возвращает состояние,
+POST `/api` принимает команды: `{"action":"next"}`. Оба запроса требуют
+`Authorization: Bearer <agent_token>`. Аудио защищено случайным HMAC-токеном
+каждого запуска и поддерживает HTTP Range.
 
-## Команды
-
-- «Алиса, включи песню Babydoll Dominic Fike».
-- «Включи исполнителя…», «включи альбом…», «включи плейлист…».
-- «Включи мою музыку» — медиатека подписки.
-- «Дальше», «назад», «пауза», «играй» — в том числе без «Алиса».
-- «Алиса, что играет?» — название и исполнитель.
-- «Алиса, включи похожие» — новая очередь рекомендаций.
-
-Успешные переключения не озвучиваются. При подключённом AirPlay локальная
-очередь ставится на паузу и уступает команды телефону; после отключения
-телефона сама не возобновляется. Для этой функции профиль должен содержать
-`"airplay_bus": "/run/station-airplay/private-bus"`.
-
-## Данные и API
-
-- Кэш: `/tmp/alice-apple-music-cache` (RAM), текущая и следующая песни.
-- Журнал: runtime log Luna; разместите plugin-state в RAM для бережного хранения.
-- HTTP: только `127.0.0.1:8099`. `/api` требует `Bearer agent_token`.
-- GET `/api`: состояние; POST `/api`: `{"action":"next"}`.
-- Звук защищён случайным HMAC-токеном на каждый запуск, поддерживает Range.
-- Очередь `queue.json` совместима с Python и восстанавливается на паузе.
+При подключении AirPlay очередь ставится на паузу и уступает команды телефону.
+Для этого в профиле задайте `airplay_bus` равным `/run/station-airplay/private-bus`.
+Отключение телефона не возобновляет локальную очередь автоматически.
 
 ## Сборка
 
-Rust stable, ARM64 musl target; на Linux с установленным musl cross-linker:
+Нужны Rust stable и target `aarch64-unknown-linux-musl`. На Linux с настроенным
+musl cross-linker:
 
 ```sh
-cargo test --locked --manifest-path rust/Cargo.toml
-python3 rust/build.py
-python3 rust/package.py
+cargo test --locked --workspace --manifest-path rust/Cargo.toml
+bash rust/build.sh
+cargo run --locked --manifest-path rust/Cargo.toml -p xtask -- package
 ```
 
-На macOS можно использовать `cargo zigbuild` с Zig 0.13 и cargo-zigbuild
-через `python3 rust/build.py --zig`. `package.py` создаёт воспроизводимый tar.gz `.yap`
-и SHA256, не включает профиль, target, аудио или зависимости Python.
+На macOS или для кросс-компиляции установите Zig 0.13 и cargo-zigbuild 0.24.0,
+затем используйте `bash rust/build.sh --zig`. Скрипт нормализует локальные пути
+разработчика в исполняемом файле.
 
-Rust-часть и связанный бинарный файл — **GPL-3.0-only** из-за библиотеки
-`widevine`; Python-часть сохраняет Apache-2.0. См. LICENSE, NOTICE и Cargo.lock.
-При распространении бинарного пакета предоставляйте соответствующие исходники.
+Команда `xtask package` создаёт tar.gz `.yap` и SHA256 в `dist/`. Можно передать
+`--binary PATH` и `--output PATH`. Сборщик проверяет ARM64 ELF и отсутствие
+личных путей, задаёт одинаковые права и временные метки файлов пакета.
+
+Полный архив соответствующих исходников с закреплёнными зависимостями Cargo:
+
+```sh
+cargo run --locked --manifest-path rust/Cargo.toml -p xtask -- source
+```
+
+Для сборки из этого архива запускайте команды из его корня. Поставщик исходников
+Cargo настроен на включённый `vendor/`; используйте `--offline --locked`.
+Сам компилятор и средства кросс-компиляции в архив не включены.
+
+Лицензия связанного бинарного файла — **GPL-3.0-only**; см. LICENSE и NOTICE.

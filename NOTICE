@@ -1,5 +1,5 @@
-Rust edition in rust/: GPL-3.0-only; see rust/LICENSE and rust/NOTICE.
-The following notices describe the original Python implementation (Apache-2.0).
+Alice × Apple Music — native Rust / Luna service
+GPL-3.0-only; see LICENSE and rust/NOTICE.
 
 Apple Music subscription playback and recommendations protocol adapted from:
 Music Assistant, https://github.com/music-assistant/server (Apache License 2.0).
@@ -9,14 +9,13 @@ Yandex Station audio_play externalCommandBypass protocol adapted from:
 AlexxIT/YandexStation, https://github.com/AlexxIT/YandexStation (MIT License).
 See third_party/LICENSE-YandexStation.
 
-This is a small independent service, not the Music Assistant server.
-Authentication tokens, private decoder assets and audio are not distributed.
-
-Direct voice IPC protocol documentation: Yandex Station Extended — Mark Pisarenko.
+Direct voice IPC protocol documented by Yandex Station Extended — Mark Pisarenko:
 https://github.com/Marker284/yandex-station-extended
 CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
-Independent Python implementation adapted to this Apple Music player; see docs/DIRECT_VOICE.md.
+Independent Rust transport implementation; see docs/DIRECT_VOICE.md.
 
 Local vocalize RPC framing documented by rison1337 / Alisa-ChatGPT-voice-assistant,
-YSE contrib/alice-say.py and v3rt3p/quasar-protos. Independent Python transport adapter.
+YSE contrib/alice-say.py and v3rt3p/quasar-protos:
 https://github.com/v3rt3p/quasar-protos
+
+Authentication credentials, private client assets and audio are not distributed.

@@ -1,2 +1,0 @@
--r requirements-direct.txt
-google-cloud-pubsub==2.43.0

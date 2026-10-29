@@ -1,6 +1,6 @@
 [package]
 name = "alice-apple-music"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Standalone Apple Music player for a rooted Station 2 and Luna"
@@ -37,3 +37,8 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[workspace]
+members = ["xtask"]
+default-members = ["."]
+resolver = "2"

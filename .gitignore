@@ -23,12 +23,7 @@ commands.sqlite3*
 *.opus
 *.download
 
-# Python and editor files
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
+# Local caches and editor files
 .DS_Store
 .idea/
 .vscode/

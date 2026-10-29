@@ -1,7 +1,7 @@
 # Установка Station AirPlay 1.4.14
 
-Установлено из PR #11 Station-airplay с Luna из связанного PR #3. Коммиты,
-контрольная сумма пакета и результаты проверок — в validation.json.
+Установлено из PR #11 Station-airplay с Luna из связанного PR #3. Коммиты и
+результаты проверок описаны в истории установки.
 AirPlay-устройство: **Yandex Station 2 AirPlay**. Пользователь подтвердил звук
 с iPhone и двустороннюю синхронизацию громкости.
 
@@ -49,7 +49,7 @@ station-volume.sh из сохранённой копии. Остальные gua
 Остановите `/data/opt/luna/launch.sh stop`. Для отмены загрузки при старте удалите
 только наш `/etc/init.d/S99zyluna` с временным remount `/` в rw и возвратом в ro.
 После отключения приёмника локальный голосовой плеер продолжает работать.
-Не удаляйте `/data/opt/alice-music` и его закрытую конфигурацию.
+Сохраняйте `/data/opt/luna/data/apple-music-private` с личным профилем.
 
 Исходники и бинарники AirPlay/Luna не перепубликовывались. Ссылки на источники:
 https://github.com/Yandex-Station-Universal-Repo/Station-airplay/pull/11
