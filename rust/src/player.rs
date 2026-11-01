@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot, watch, RwLock};
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Queue {
     #[serde(default)]
@@ -62,6 +62,7 @@ pub struct Shared {
     pub secret: [u8; 32],
     pub cache: PathBuf,
     pub tx: mpsc::Sender<Job>,
+    pub intent: watch::Sender<u64>,
 }
 pub struct Job {
     pub action: String,
@@ -69,8 +70,31 @@ pub struct Job {
     pub voice: bool,
     pub reply: Option<oneshot::Sender<Result<String>>>,
     pub at: Instant,
+    pub revision: Option<u64>,
+}
+async fn current_job<T>(
+    mut intents: watch::Receiver<u64>,
+    revision: u64,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    if *intents.borrow_and_update() != revision {
+        return None;
+    }
+    tokio::select! {
+        biased;
+        _ = intents.changed() => None,
+        result = work => Some(result),
+    }
 }
 impl Shared {
+    pub fn begin_intent(&self, action: &str) -> Option<u64> {
+        if matches!(action, "announce_now" | "speak_text") {
+            return None;
+        }
+        self.intent
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        Some(*self.intent.borrow())
+    }
     pub fn token(&self, id: &str) -> String {
         let mut m = Hmac::<Sha256>::new_from_slice(&self.secret).expect("HMAC");
         m.update(id.as_bytes());
@@ -86,6 +110,7 @@ impl Shared {
     }
     pub async fn command(&self, action: &str, query: &str, voice: bool) -> Result<String> {
         let (tx, rx) = oneshot::channel();
+        let revision = self.begin_intent(action);
         self.tx
             .send(Job {
                 action: action.into(),
@@ -93,6 +118,7 @@ impl Shared {
                 voice,
                 reply: Some(tx),
                 at: Instant::now(),
+                revision,
             })
             .await
             .map_err(|_| anyhow!("Player stopped"))?;
@@ -140,6 +166,7 @@ impl Player {
             secret: rand::random(),
             cache: apple.cache.clone(),
             tx,
+            intent: watch::channel(0).0,
         };
         (
             Self {
@@ -228,15 +255,26 @@ impl Player {
         );
         for attempt in 0..3 {
             self.shared.station.play(&url, &track, &id).await?;
-            tokio::time::sleep(Duration::from_millis(700)).await;
-            let _ = self
-                .shared
-                .station
-                .send(json!({"command":"softwareVersion"}))
-                .await;
-            let status = self.shared.station.snapshot();
-            if status["playing"] == true && status["playerState"]["id"] == id {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut accepted = false;
+            let mut started = false;
+            while Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                let status = self.shared.station.snapshot();
+                if status["playerState"]["id"] == id {
+                    accepted = true;
+                    if status["playing"] == true {
+                        started = true;
+                        break;
+                    }
+                }
+            }
+            if started {
                 break;
+            }
+            // Replaying an accepted, still-buffering stream resets it to zero.
+            if accepted {
+                bail!("Станция ещё загружает аудио.");
             }
             if attempt == 2 {
                 bail!("Станция не начала воспроизведение.");
@@ -331,7 +369,9 @@ impl Player {
         Ok("Дальше.".into())
     }
     async fn execute(&mut self, j: &Job) -> Result<String> {
-        if self.shared.view.read().await.airplay && !matches!(j.action.as_str(), "pause" | "stop") {
+        if self.shared.view.read().await.airplay
+            && !matches!(j.action.as_str(), "pause" | "stop" | "speak_text")
+        {
             bail!("Сейчас играет AirPlay.");
         }
         match j.action.as_str() {
@@ -406,6 +446,18 @@ impl Player {
                 self.view.queue.seen = HashSet::from([t.id.clone()]);
                 self.next(j.voice).await
             }
+            "speak_text" => {
+                let port = self.shared.config.recognition_port;
+                let spoken = j.query.chars().take(700).collect::<String>();
+                tokio::spawn(async move {
+                    let _ = wire::speak(port, &spoken).await;
+                });
+                if self.view.state == "playing" {
+                    self.grace = Instant::now() + Duration::from_secs(3);
+                    self.title_recover_until = Some(Instant::now() + Duration::from_secs(75));
+                }
+                Ok("Готово.".into())
+            }
             "now" | "announce_now" => {
                 let t = self
                     .view
@@ -447,6 +499,9 @@ impl Player {
         }
     }
     async fn handle_job(&mut self, job: Job) {
+        if job.reply.as_ref().is_some_and(|reply| reply.is_closed()) {
+            return;
+        }
         if job.at.elapsed() > Duration::from_secs(30) {
             if let Some(reply) = job.reply {
                 let _ = reply.send(Err(anyhow!("Команда устарела.")));
@@ -465,7 +520,23 @@ impl Player {
         } else {
             None
         };
-        let result = self.execute(&job).await;
+        let result = if let Some(revision) = job.revision {
+            let intents = self.shared.intent.subscribe();
+            match current_job(intents, revision, self.execute(&job)).await {
+                Some(result) => result,
+                None => {
+                    self.view = before;
+                    self.publish().await;
+                    if let Some(reply) = job.reply {
+                        let _ = reply.send(Err(anyhow!("Команда заменена новой.")));
+                    }
+                    println!("command_superseded");
+                    return;
+                }
+            }
+        } else {
+            self.execute(&job).await
+        };
         if result.is_ok() && job.voice && self.view.state == "playing" {
             if let Some(volume) = volume {
                 self.volume_recovery = Some((Instant::now() + Duration::from_secs(20), volume));
@@ -585,5 +656,30 @@ impl Player {
             self.checkpoint().await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod intent_tests {
+    use super::*;
+    #[tokio::test]
+    async fn queued_old_request_does_not_run() {
+        let (tx, rx) = watch::channel(2);
+        let result = current_job(rx, 1, async { panic!("obsolete work must not run") }).await;
+        assert!(result.is_none());
+        drop(tx);
+    }
+    #[tokio::test]
+    async fn newer_intent_cancels_in_flight_preparation() {
+        let (tx, rx) = watch::channel(1);
+        let job = tokio::spawn(current_job(rx, 1, std::future::pending::<()>()));
+        tokio::task::yield_now().await;
+        tx.send_replace(2);
+        assert!(job.await.unwrap().is_none());
+    }
+    #[tokio::test]
+    async fn current_intent_completes_normally() {
+        let (_tx, rx) = watch::channel(1);
+        assert_eq!(current_job(rx, 1, async { 42 }).await, Some(42));
     }
 }

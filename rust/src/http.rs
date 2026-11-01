@@ -105,6 +105,7 @@ mod tests {
             station: Station::fixture(),
             config: Arc::new(config),
             secret: [42; 32],
+            intent: tokio::sync::watch::channel(0).0,
             cache,
             tx,
         }

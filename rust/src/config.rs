@@ -22,6 +22,15 @@ pub struct Config {
     pub max_download_bytes: u64,
     #[serde(default)]
     pub airplay_bus: Option<String>,
+    #[serde(default)]
+    pub gemini: GeminiOptions,
+}
+#[derive(Clone, Default, Deserialize)]
+pub struct GeminiOptions {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub alice_device_names: Vec<String>,
 }
 fn ffmpeg() -> String {
     "/opt/bin/ffmpeg".into()

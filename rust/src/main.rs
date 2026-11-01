@@ -1,6 +1,7 @@
 mod airplay;
 mod apple;
 mod config;
+mod gemini;
 mod http;
 mod player;
 mod station;
@@ -21,6 +22,8 @@ struct Args {
     cache: PathBuf,
     #[arg(long)]
     check: Option<String>,
+    #[arg(long, conflicts_with = "check")]
+    check_gemini: Option<String>,
     #[arg(long)]
     local_voice: bool,
     #[arg(long)]
@@ -75,6 +78,10 @@ async fn run() -> Result<()> {
             "Luna runtime denied exec permission"
         );
     }
+    if let Some(question) = a.check_gemini {
+        println!("{}", gemini::probe(&a.private, &question).await?);
+        return Ok(());
+    }
     let config = Arc::new(config::Config::load(&a.private)?);
     // Bind first so a duplicate instance cannot subscribe to voice or touch playback.
     let listener = if a.check.is_none() {
@@ -98,14 +105,15 @@ async fn run() -> Result<()> {
         return Ok(());
     }
     let station = station::Station::start(config.clone(), apple.http.clone());
-    let (player, rx) = player::Player::new(apple, station, a.private);
+    let (player, rx) = player::Player::new(apple, station, a.private.clone());
     let shared = player.shared.clone();
     let actor = tokio::spawn(player.run(rx));
     if let Some(bus) = &config.airplay_bus {
         tokio::spawn(airplay::run(shared.clone(), bus.clone()));
     }
     if a.local_voice {
-        voice::start(shared.clone());
+        let assistant = gemini::Assistant::new(&config.gemini, &a.private, shared.clone()).await?;
+        voice::start(shared.clone(), assistant);
     }
     let shutdown_shared = shared.clone();
     let shutdown = async move {

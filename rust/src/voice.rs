@@ -1,4 +1,5 @@
 use crate::{
+    gemini::{native_followup, Assistant},
     player::{Job, Shared},
     wire,
 };
@@ -14,11 +15,16 @@ use tokio::{
 pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
     let text = text.to_lowercase().replace('ё', "е");
     let mut text = text
-        .trim_matches(|c: char| c.is_whitespace() || ".!?".contains(c))
+        .trim_matches(|c: char| c.is_whitespace() || ".!?,:;".contains(c))
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
     if let Some(t) = text.strip_prefix("алиса") {
+        if t.starts_with([',', ' ', ':', '!', '?', '.']) {
+            text = t.trim_start_matches([',', ' ', ':', '!', '?', '.']).into();
+        }
+    }
+    if let Some(t) = text.strip_prefix("пожалуйста") {
         if t.starts_with([',', ' ']) {
             text = t.trim_start_matches([',', ' ']).into();
         }
@@ -41,6 +47,12 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
                 "следующая песня",
                 "следующий трек",
                 "музыку дальше",
+                "следующую",
+                "следующий",
+                "следующую песню",
+                "включи следующую песню",
+                "включи следующий трек",
+                "переключи песню",
             ],
         ),
         (
@@ -51,6 +63,10 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
                 "предыдущая песня",
                 "предыдущий трек",
                 "музыку назад",
+                "предыдущую",
+                "предыдущую песню",
+                "включи предыдущую песню",
+                "включи предыдущий трек",
             ],
         ),
         (
@@ -63,6 +79,10 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
                 "останови музыку",
                 "поставь на паузу",
                 "поставь музыку на паузу",
+                "останови",
+                "останови воспроизведение",
+                "приостанови музыку",
+                "поставь воспроизведение на паузу",
             ],
         ),
         (
@@ -71,8 +91,23 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
                 "играй",
                 "продолжай",
                 "продолжи",
+                "продолжить",
+                "продолжим",
+                "возобнови",
                 "продолжи музыку",
                 "продолжай музыку",
+                "играй музыку",
+                "играй дальше",
+                "продолжи играть",
+                "продолжай играть",
+                "продолжить музыку",
+                "продолжи воспроизведение",
+                "продолжай воспроизведение",
+                "возобнови музыку",
+                "возобнови воспроизведение",
+                "сними с паузы",
+                "сними музыку с паузы",
+                "сними трек с паузы",
             ],
         ),
         (
@@ -173,24 +208,72 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
     }
     Some(("auto".into(), q))
 }
+fn parse_for_queue(text: &str, has_current: bool, recent: bool) -> Option<(String, String)> {
+    let mut command = parse(text, recent)?;
+    if command.0 == "resume" && !has_current {
+        command.0 = "library".into();
+    }
+    if has_current && command.0 == "library" {
+        let normalized = crate::gemini::normalize(text);
+        if ["включи музыку", "поставь музыку", "сыграй музыку"].contains(&normalized.as_str())
+        {
+            command.0 = "resume".into();
+        }
+    }
+    Some(command)
+}
+fn spotter_command(text: &str) -> bool {
+    parse(text, true).is_some_and(|(action, _)| {
+        matches!(
+            action.as_str(),
+            "next" | "previous" | "pause" | "resume" | "similar" | "announce_now"
+        )
+    })
+}
+#[derive(Default)]
+struct RequestIds(std::collections::VecDeque<String>);
+impl RequestIds {
+    fn seen(&mut self, id: Option<&str>) -> bool {
+        let Some(id) = id.filter(|id| !id.is_empty()) else {
+            return false;
+        };
+        if self.0.iter().any(|old| old == id) {
+            return true;
+        }
+        self.0.push_back(id.into());
+        if self.0.len() > 32 {
+            self.0.pop_front();
+        }
+        false
+    }
+}
 struct Routing {
+    requests: RequestIds,
     last_text: String,
     last_at: Instant,
     active: Option<Instant>,
     last_routed: Option<((String, String), bool, Instant)>,
+    native_until: Option<Instant>,
 }
 #[derive(Clone)]
 struct Voice {
     shared: Shared,
     routing: Arc<Mutex<Routing>>,
+    assistant: Option<Assistant>,
 }
 impl Voice {
-    async fn accept(&self, state: u64, text: &str, spotter: bool) {
+    async fn accept(&self, state: u64, text: &str, spotter: bool, request_id: Option<&str>) {
         let mut r = self.routing.lock().await;
         if state == 1 {
             r.last_text.clear();
+            if let Some(assistant) = &self.assistant {
+                assistant.interrupt().await;
+            }
         }
         if state != 3 || text.is_empty() {
+            return;
+        }
+        if !spotter && r.requests.seen(request_id) {
             return;
         }
         let now = Instant::now();
@@ -199,7 +282,35 @@ impl Voice {
         }
         r.last_text = text.into();
         r.last_at = now;
-        let Some(candidate) = parse(text, true) else {
+        let candidate = parse(text, true);
+        if let Some(assistant) = &self.assistant {
+            let explicit_music = candidate
+                .as_ref()
+                .is_some_and(|(action, _)| action != "auto");
+            if !spotter
+                && !explicit_music
+                && (assistant.native(text)
+                    || r.native_until.is_some_and(|until| until > now) && native_followup(text))
+            {
+                assistant.interrupt().await;
+                r.native_until = Some(now + Duration::from_secs(30));
+                println!("assistant_route=alice");
+                return;
+            }
+        }
+        let Some(candidate) = candidate else {
+            if !spotter {
+                if let Some(assistant) = &self.assistant {
+                    if wire::cancel_dialog(self.shared.config.recognition_port)
+                        .await
+                        .is_ok()
+                    {
+                        r.native_until = None;
+                        println!("assistant_route=gemini");
+                        assistant.submit(text).await;
+                    }
+                }
+            }
             return;
         };
         let view = self.shared.view.read().await;
@@ -210,13 +321,15 @@ impl Voice {
         let own = native["playerState"]["id"]
             .as_str()
             .is_some_and(|s| s.starts_with("alice-music-rust:"));
+        let has_current = view.queue.current.is_some();
         let recent = r
             .active
             .is_some_and(|t| t.elapsed() < Duration::from_secs(3600))
             || own
-            || ((spotter || candidate.0 == "announce_now") && view.queue.current.is_some());
+            || has_current
+            || candidate.0 == "resume";
         drop(view);
-        let Some(cmd) = parse(text, recent) else {
+        let Some(cmd) = parse_for_queue(text, has_current, recent) else {
             return;
         };
         if r.last_routed.as_ref().is_some_and(|(c, source, t)| {
@@ -234,15 +347,25 @@ impl Voice {
         {
             return;
         }
+        if let Some(assistant) = &self.assistant {
+            assistant.interrupt().await;
+        }
+        r.native_until = None;
         r.last_routed = Some((cmd.clone(), spotter, now));
         r.active = Some(now);
-        println!("voice action={}", cmd.0);
+        println!(
+            "voice action={} source={}",
+            cmd.0,
+            if spotter { "spotter" } else { "recognition" }
+        );
+        let revision = self.shared.begin_intent(&cmd.0);
         permit.send(Job {
             action: cmd.0,
             query: cmd.1,
             voice: true,
             reply: None,
             at: now,
+            revision,
         });
     }
     async fn recognition(self) {
@@ -253,10 +376,22 @@ impl Voice {
                     self.shared.config.recognition_port,
                 ))
                 .await?;
+                let mut initial = true;
                 loop {
                     let frame = wire::read_frame(&mut socket).await?;
                     if let Ok(Some((state, text))) = wire::recognition(&frame) {
-                        self.accept(state, &text, false).await;
+                        let body = wire::get_bytes(&frame, 252)?.unwrap_or_default();
+                        let id =
+                            wire::get_bytes(&body, 7)?.and_then(|id| String::from_utf8(id).ok());
+                        // A reconnect starts with the previous dialog snapshot.
+                        if initial {
+                            initial = false;
+                            if !text.is_empty() {
+                                self.routing.lock().await.requests.seen(id.as_deref());
+                            }
+                            continue;
+                        }
+                        self.accept(state, &text, false, id.as_deref()).await;
                     }
                 }
             }
@@ -308,18 +443,8 @@ impl Voice {
                         let line = String::from_utf8_lossy(&bytes);
                         if let Some((_, word)) = line.split_once("Command phrase spotted: ") {
                             let word = word.trim().trim_start_matches('^').trim().to_lowercase();
-                            if [
-                                "дальше",
-                                "назад",
-                                "пауза",
-                                "стоп",
-                                "хватит",
-                                "играй",
-                                "продолжай",
-                            ]
-                            .contains(&word.as_str())
-                            {
-                                self.accept(3, &word, true).await;
+                            if spotter_command(&word) {
+                                self.accept(3, &word, true, None).await;
                             }
                         }
                     }
@@ -329,14 +454,17 @@ impl Voice {
         }
     }
 }
-pub fn start(shared: Shared) {
+pub fn start(shared: Shared, assistant: Option<Assistant>) {
     let voice = Voice {
         shared,
+        assistant,
         routing: Arc::new(Mutex::new(Routing {
+            requests: RequestIds::default(),
             last_text: String::new(),
             last_at: Instant::now(),
             active: None,
             last_routed: None,
+            native_until: None,
         })),
     };
     tokio::spawn(voice.clone().recognition());
@@ -375,5 +503,120 @@ mod tests {
             parse("включи мою музыку", false),
             Some(("library".into(), "".into()))
         );
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+    #[test]
+    fn all_resume_forms_route_to_current_queue() {
+        for phrase in [
+            "продолжи",
+            "продолжай",
+            "продолжить",
+            "продолжим",
+            "возобнови",
+            "играй",
+        ] {
+            assert!(spotter_command(phrase), "bare control missing: {phrase}");
+            assert_eq!(
+                parse(phrase, true),
+                Some(("resume".into(), String::new())),
+                "{phrase}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod command_matrix_tests {
+    use super::*;
+    #[test]
+    fn saved_queue_controls_with_and_without_wake_word() {
+        let groups: &[(&str, &[&str])] = &[
+            (
+                "resume",
+                &[
+                    "играй",
+                    "играй музыку",
+                    "продолжи",
+                    "продолжай",
+                    "продолжить",
+                    "возобнови музыку",
+                    "продолжи воспроизведение",
+                    "сними с паузы",
+                ],
+            ),
+            (
+                "pause",
+                &[
+                    "пауза",
+                    "стоп",
+                    "останови музыку",
+                    "поставь музыку на паузу",
+                ],
+            ),
+            (
+                "next",
+                &["дальше", "следующая песня", "включи следующий трек"],
+            ),
+            (
+                "previous",
+                &["назад", "предыдущая песня", "включи предыдущий трек"],
+            ),
+        ];
+        for (action, phrases) in groups {
+            for phrase in *phrases {
+                for prefix in ["", "Алиса, ", "алиса ", "Алиса! ", "Алиса, пожалуйста, "]
+                {
+                    for suffix in ["", "!", ", пожалуйста"] {
+                        let text = format!("{prefix}{phrase}{suffix}");
+                        assert_eq!(
+                            parse_for_queue(&text, true, true).unwrap().0,
+                            *action,
+                            "{text}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn first_play_uses_apple_library() {
+        assert_eq!(
+            parse_for_queue("Алиса, играй", false, true).unwrap().0,
+            "library"
+        );
+    }
+    #[test]
+    fn generic_music_continues_saved_queue() {
+        assert_eq!(
+            parse_for_queue("Алиса, включи музыку", true, true)
+                .unwrap()
+                .0,
+            "resume"
+        );
+        assert_eq!(
+            parse_for_queue("Алиса, включи мою музыку", true, true)
+                .unwrap()
+                .0,
+            "library"
+        );
+    }
+}
+
+#[cfg(test)]
+mod request_replay_tests {
+    use super::*;
+    #[test]
+    fn one_request_executes_once_even_after_another_request() {
+        let mut ids = RequestIds::default();
+        assert!(!ids.seen(Some("first")));
+        assert!(ids.seen(Some("first")));
+        assert!(!ids.seen(Some("second")));
+        assert!(ids.seen(Some("first")));
+        assert!(!ids.seen(None));
+        assert!(!ids.seen(Some("")));
     }
 }

@@ -103,7 +103,24 @@ pub fn recognition(frame: &[u8]) -> Result<Option<(u64, String)>> {
     let Some(body) = get_bytes(frame, 252)? else {
         return Ok(None);
     };
-    let state = get_number(&body, 1)?.unwrap_or(0);
+    let phase = get_number(&body, 1)?;
+    if phase == Some(3) {
+        let text = String::from_utf8(get_bytes(&body, 2)?.unwrap_or_default())?;
+        if !text.is_empty() {
+            return Ok(Some((3, text)));
+        }
+    }
+    if matches!(phase, None | Some(3)) {
+        if let Some(asr) = get_bytes(&body, 15)? {
+            if get_number(&asr, 2)? == Some(1) {
+                let text = String::from_utf8(get_bytes(&asr, 1)?.unwrap_or_default())?;
+                if !text.is_empty() {
+                    return Ok(Some((3, text)));
+                }
+            }
+        }
+    }
+    let state = phase.unwrap_or(0);
     let text = if state == 3 {
         String::from_utf8(get_bytes(&body, 2)?.unwrap_or_default())?
     } else {
@@ -121,7 +138,7 @@ pub fn rpc(field: u64, payload: &[u8]) -> Vec<u8> {
     out
 }
 pub fn cancel() -> Vec<u8> {
-    [3, 6, 14]
+    [1, 6, 14, 3]
         .into_iter()
         .flat_map(|n| rpc(8, &[8, n, 56, 1]))
         .collect()
@@ -136,6 +153,16 @@ pub async fn read_frame(socket: &mut TcpStream) -> Result<Vec<u8>> {
 pub async fn cancel_dialog(port: u16) -> Result<()> {
     let mut s = TcpStream::connect(("127.0.0.1", port)).await?;
     s.write_all(&cancel()).await?;
+    // Keep the IPC session alive while Quasar dispatches cancellation. Closing
+    // immediately can discard work queued by the SDK connection handler.
+    let _ = tokio::time::timeout(Duration::from_millis(300), async {
+        loop {
+            read_frame(&mut s).await?;
+        }
+        #[allow(unreachable_code)]
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
     Ok(())
 }
 pub async fn speak(port: u16, text: &str) -> Result<()> {
@@ -148,10 +175,25 @@ pub async fn speak(port: u16, text: &str) -> Result<()> {
     payload.extend(bytes(13, &directive));
     socket.write_all(&sub).await?;
     socket.write_all(&rpc(8, &payload)).await?;
-    let _ = tokio::time::timeout(Duration::from_secs(12), async {
+    let _ = tokio::time::timeout(Duration::from_secs(65), async {
+        let mut started = false;
         loop {
-            if read_frame(&mut socket).await.is_err() {
+            let Ok(frame) = read_frame(&mut socket).await else {
                 break;
+            };
+            if get_number(&frame, 253).ok().flatten() != Some(3) {
+                continue;
+            }
+            let Some(body) = get_bytes(&frame, 252).ok().flatten() else {
+                continue;
+            };
+            let Some(event) = get_bytes(&body, 18).ok().flatten() else {
+                continue;
+            };
+            match get_number(&event, 1).ok().flatten() {
+                Some(6) => started = true,
+                Some(1) if started => break,
+                _ => {}
             }
         }
     })
@@ -183,5 +225,81 @@ mod tests {
         assert_eq!(fields(&d).unwrap(), vec![(1, Field::Number(u64::MAX))]);
         d.push(0);
         assert!(fields(&d).is_err());
+    }
+}
+
+#[cfg(test)]
+mod asr_tests {
+    use super::*;
+    #[test]
+    fn command_origin_final_asr_is_recognized() {
+        let mut asr = bytes(1, "играй".as_bytes());
+        asr.extend(number(2, 1));
+        let mut body = number(1, 3);
+        body.extend(bytes(15, &asr));
+        let mut frame = bytes(252, &body);
+        frame.extend(number(253, 3));
+        assert_eq!(recognition(&frame).unwrap(), Some((3, "играй".into())));
+    }
+    #[test]
+    fn idle_snapshot_does_not_replay_old_asr() {
+        let mut asr = bytes(1, "играй".as_bytes());
+        asr.extend(number(2, 1));
+        let mut body = number(1, 0);
+        body.extend(bytes(15, &asr));
+        let mut frame = bytes(252, &body);
+        frame.extend(number(253, 3));
+        assert_eq!(recognition(&frame).unwrap(), Some((0, String::new())));
+    }
+}
+
+#[cfg(test)]
+mod replay_regression_tests {
+    use super::*;
+    #[test]
+    fn listening_snapshot_never_replays_previous_final() {
+        let asr = [bytes(1, "включи песню Babydoll".as_bytes()), number(2, 1)].concat();
+        let body = [number(1, 1), bytes(15, &asr)].concat();
+        let frame = [bytes(252, &body), number(253, 3)].concat();
+        assert_eq!(recognition(&frame).unwrap(), Some((1, String::new())));
+    }
+    #[test]
+    fn fresh_transcript_wins_over_retained_asr() {
+        let asr = [bytes(1, "старая песня".as_bytes()), number(2, 1)].concat();
+        let body = [
+            number(1, 3),
+            bytes(2, "новая песня".as_bytes()),
+            bytes(15, &asr),
+        ]
+        .concat();
+        let frame = [bytes(252, &body), number(253, 3)].concat();
+        assert_eq!(
+            recognition(&frame).unwrap(),
+            Some((3, "новая песня".into()))
+        );
+    }
+    #[tokio::test]
+    async fn cancellation_keeps_session_open_for_dispatch() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let check = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut methods = vec![];
+            for _ in 0..4 {
+                let frame = read_frame(&mut socket).await.unwrap();
+                let remote = get_bytes(&frame, 252).unwrap().unwrap();
+                let payload = get_bytes(&remote, 8).unwrap().unwrap();
+                methods.push(get_number(&payload, 1).unwrap().unwrap());
+            }
+            assert_eq!(methods, vec![1, 6, 14, 3]);
+            let mut byte = [0];
+            assert!(
+                tokio::time::timeout(Duration::from_millis(100), socket.read(&mut byte))
+                    .await
+                    .is_err()
+            );
+        });
+        cancel_dialog(port).await.unwrap();
+        check.await.unwrap();
     }
 }

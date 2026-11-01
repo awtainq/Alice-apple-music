@@ -11,5 +11,9 @@
   "station_port": 1961,
   "recognition_port": 9875,
   "max_download_bytes": 33554432,
-  "airplay_bus": "/run/station-airplay/private-bus"
+  "airplay_bus": "/run/station-airplay/private-bus",
+  "gemini": {
+    "enabled": false,
+    "alice_device_names": []
+  }
 }
