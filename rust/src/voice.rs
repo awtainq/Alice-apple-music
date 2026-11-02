@@ -29,6 +29,14 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
         return None;
     }
     let transport = match text.as_str() {
+        "мне нравится" | "мне нравится эта песня" | "нравится" | "лайк" | "добавь в избранное" => {
+            Some("like")
+        }
+        "мне не нравится"
+        | "мне не нравится эта песня"
+        | "не нравится"
+        | "дизлайк"
+        | "больше не включай эту песню" => Some("dislike"),
         "пауза"
         | "стоп"
         | "хватит"
@@ -43,6 +51,15 @@ pub fn parse(text: &str, recent: bool) -> Option<(String, String)> {
     };
     if let Some(action) = transport {
         return recent.then(|| (action.into(), String::new()));
+    }
+    if [
+        "включи понравившиеся",
+        "включи понравившиеся песни",
+        "включи избранное",
+    ]
+    .contains(&text.as_str())
+    {
+        return Some(("favorites".into(), String::new()));
     }
     // Explicit search precedes transport words, so a song called "Дальше" is searchable.
     for prefix in ["поставь ", "включи ", "играй ", "сыграй "] {
@@ -339,7 +356,20 @@ mod tests {
             Some(("play".into(), "дальше".into()))
         );
         assert_eq!(parse("поставь мою музыку", false).unwrap().0, "library");
+        assert_eq!(
+            parse("Алиса, включи понравившиеся песни", false).unwrap().0,
+            "favorites"
+        );
+        assert!(parse("мне нравится погода", true).is_none());
+        assert_eq!(
+            parse("включи песню Мне нравится", true).unwrap(),
+            ("play".into(), "мне нравится".into())
+        );
         for (text, action) in [
+            ("мне нравится", "like"),
+            ("мне не нравится", "dislike"),
+            ("добавь в избранное", "like"),
+            ("больше не включай эту песню", "dislike"),
             ("пауза", "pause"),
             ("продолжи", "resume"),
             ("дальше", "next"),

@@ -81,6 +81,17 @@ async fn response(r: Result<Response, reqwest::Error>) -> Result<Response> {
     Ok(r)
 }
 impl Apple {
+    #[cfg(test)]
+    pub fn fixture(private: PathBuf) -> Self {
+        Self {
+            http: Client::new(),
+            config: Arc::new(serde_json::from_value(json!({"apple_app_token":"fixture", "apple_user_token":"fixture", "agent_token":"fixture"})).unwrap()),
+            cache: private.join("cache"), private, storefront: "fixture".into(),
+            gate: Arc::new(Mutex::new(tokio::time::Instant::now() - Duration::from_secs(1))),
+            prepare_gate: Arc::new(Mutex::new(())),
+        }
+    }
+
     pub async fn new(config: Arc<Config>, private: PathBuf, cache: PathBuf) -> Result<Self> {
         tokio::fs::create_dir_all(&cache).await?;
         let http = Client::builder()

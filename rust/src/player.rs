@@ -2,6 +2,7 @@ use crate::{
     apple::{Apple, Track},
     audio::Audio,
     config::Config,
+    preferences::Preferences,
     volume::Volume,
     wire,
 };
@@ -96,7 +97,10 @@ async fn current_job<T>(
 }
 impl Shared {
     pub fn begin_intent(&self, action: &str) -> Option<u64> {
-        if matches!(action, "announce_now" | "now" | "speak_text") {
+        if matches!(
+            action,
+            "announce_now" | "now" | "speak_text" | "like" | "dislike"
+        ) {
             return None;
         }
         self.intent.send_modify(|r| *r = r.wrapping_add(1));
@@ -152,9 +156,11 @@ pub struct Player {
     prefetch: Option<tokio::task::JoinHandle<()>>,
     last_checkpoint: Instant,
     recommendations: Option<Recommendations>,
+    preferences: Result<Preferences>,
 }
 impl Player {
     pub fn new(apple: Apple, volume: Volume, private: PathBuf) -> (Self, mpsc::Receiver<Job>) {
+        let preferences = Preferences::load(&private);
         let queue = std::fs::read(private.join("queue.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
@@ -190,6 +196,7 @@ impl Player {
                 prefetch: None,
                 last_checkpoint: Instant::now(),
                 recommendations: None,
+                preferences,
             },
             rx,
         )
@@ -288,7 +295,14 @@ impl Player {
                 .map(|t| t.id.clone())
                 .collect();
             for t in self.apple.similar(&seed).await? {
-                if !self.view.queue.seen.contains(&t.id) && ids.insert(t.id.clone()) {
+                if !self
+                    .preferences
+                    .as_ref()
+                    .map_err(|_| anyhow!("Не удалось прочитать оценки."))?
+                    .blocked(&t.id)
+                    && !self.view.queue.seen.contains(&t.id)
+                    && ids.insert(t.id.clone())
+                {
                     self.view.queue.upcoming.push(t);
                 }
             }
@@ -299,6 +313,9 @@ impl Player {
         bail!("Похожих песен пока нет.")
     }
     async fn prefetch(&mut self) {
+        if self.filter_upcoming().is_err() {
+            return;
+        }
         if self.prefetch.as_ref().is_some_and(|p| !p.is_finished()) {
             return;
         }
@@ -322,6 +339,7 @@ impl Player {
         }
     }
     async fn next(&mut self) -> Result<String> {
+        self.filter_upcoming()?;
         if self.view.queue.upcoming.is_empty() {
             self.refill().await?;
         }
@@ -342,6 +360,62 @@ impl Player {
         self.prefetch().await;
         Ok("Дальше.".into())
     }
+    fn filter_upcoming(&mut self) -> Result<()> {
+        let preferences = self
+            .preferences
+            .as_ref()
+            .map_err(|_| anyhow!("Не удалось прочитать оценки."))?;
+        self.view
+            .queue
+            .upcoming
+            .retain(|t| !preferences.blocked(&t.id));
+        Ok(())
+    }
+    async fn rate_current(&mut self, liked: bool, voice: bool) -> Result<String> {
+        let track = self
+            .view
+            .queue
+            .current
+            .clone()
+            .ok_or_else(|| anyhow!("Сначала включите песню."))?;
+        let mut preferences = self
+            .preferences
+            .as_ref()
+            .map_err(|_| anyhow!("Не удалось прочитать оценки."))?
+            .clone();
+        preferences.rate(track, liked);
+        preferences.save(&self.private).await?;
+        self.preferences = Ok(preferences);
+        let message = if liked {
+            "Запомнила."
+        } else {
+            "Больше не предложу."
+        };
+        if voice {
+            self.shared.speak(message.into());
+        }
+        if !liked {
+            if let Some(task) = self.prefetch.take() {
+                task.abort();
+                let _ = task.await;
+            }
+            self.filter_upcoming()?;
+            let playing = self.view.state == "playing";
+            if playing {
+                self.view.queue.position = self.audio.stop().await;
+                self.view.state = "paused".into();
+                // The rating is already durable. If no replacement is available,
+                // stay paused instead of restoring the rejected track on failure.
+                if self.next().await.is_err() {
+                    self.view.error = Some("Оценка сохранена, следующая песня недоступна.".into());
+                }
+            }
+            if self.checkpoint().await.is_err() {
+                eprintln!("rating_queue_checkpoint_failed");
+            }
+        }
+        Ok(message.into())
+    }
     async fn execute(&mut self, j: &Job) -> Result<String> {
         if self.shared.view.read().await.airplay
             && !matches!(j.action.as_str(), "pause" | "stop" | "speak_text")
@@ -349,7 +423,9 @@ impl Player {
             bail!("Сейчас играет AirPlay.");
         }
         match j.action.as_str() {
-            "play" | "auto" | "artist" | "album" | "playlist" | "library" => {
+            "like" => self.rate_current(true, j.voice).await,
+            "dislike" => self.rate_current(false, j.voice).await,
+            "play" | "auto" | "artist" | "album" | "playlist" | "library" | "favorites" => {
                 // A new selection supersedes speculative work for the old queue.
                 if let Some(task) = self.prefetch.take() {
                     task.abort();
@@ -360,7 +436,14 @@ impl Player {
                     let _ = task.await;
                 }
                 let search_at = Instant::now();
-                let mut tracks = self.apple.select(&j.query, &j.action).await?;
+                let mut tracks = if j.action == "favorites" {
+                    self.preferences
+                        .as_ref()
+                        .map_err(|_| anyhow!("Не удалось прочитать оценки."))?
+                        .favorites()
+                } else {
+                    self.apple.select(&j.query, &j.action).await?
+                };
                 println!(
                     "music_search elapsed_ms={}",
                     search_at.elapsed().as_millis()
@@ -375,6 +458,7 @@ impl Player {
                     upcoming: tracks,
                     ..Queue::default()
                 };
+                self.filter_upcoming()?;
                 self.play(first, 0., intro).await?;
                 self.prefetch().await;
                 Ok("Включаю.".into())
@@ -547,7 +631,12 @@ impl Player {
                             .map(|t| t.id.clone())
                             .collect();
                         for track in tracks {
-                            if !self.view.queue.seen.contains(&track.id)
+                            if !self
+                                .preferences
+                                .as_ref()
+                                .map_err(|_| anyhow!("Не удалось прочитать оценки."))?
+                                .blocked(&track.id)
+                                && !self.view.queue.seen.contains(&track.id)
                                 && ids.insert(track.id.clone())
                             {
                                 self.view.queue.upcoming.push(track);
@@ -606,5 +695,39 @@ mod intro_tests {
         );
         assert_eq!(music_intro(""), "Включаю песню.");
         assert!(music_intro(&"я".repeat(500)).chars().count() <= 89);
+    }
+}
+
+#[cfg(test)]
+mod rating_tests {
+    use super::*;
+    fn track(id: &str) -> Track {
+        Track {
+            id: id.into(),
+            title: "Fixture".into(),
+            artist: "Test".into(),
+            duration: 10.,
+        }
+    }
+    #[tokio::test]
+    async fn rating_paused_queue_never_starts_audio_and_persists_filter() {
+        let dir = std::env::temp_dir().join(format!("player-ratings-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir(&dir).await.unwrap();
+        let (mut player, _rx) =
+            Player::new(Apple::fixture(dir.clone()), Volume::fixture(), dir.clone());
+        assert!(player.rate_current(true, false).await.is_err());
+        player.view.queue.current = Some(track("1"));
+        player.view.queue.upcoming = vec![track("1"), track("2")];
+        player.rate_current(false, false).await.unwrap();
+        assert_eq!(player.view.state, "paused");
+        assert!(!player.audio.active());
+        assert_eq!(player.view.queue.upcoming, vec![track("2")]);
+        let saved = Preferences::load(&dir).unwrap();
+        assert!(saved.blocked("1"));
+        player.rate_current(true, false).await.unwrap();
+        assert!(!player.audio.active());
+        let saved = Preferences::load(&dir).unwrap();
+        assert_eq!(saved.favorites(), vec![track("1")]);
+        tokio::fs::remove_dir_all(dir).await.unwrap();
     }
 }

@@ -5,6 +5,7 @@ mod config;
 mod gemini;
 mod http;
 mod player;
+mod preferences;
 mod voice;
 mod volume;
 mod wire;

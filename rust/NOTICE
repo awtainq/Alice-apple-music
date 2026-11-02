@@ -7,11 +7,11 @@ https://crates.io/crates/widevine/0.1.0
 https://codeberg.org/ThetaDev/widevine-rs
 Dependency versions and checksums are pinned in rust/Cargo.lock.
 Corresponding application source and build instructions:
-https://github.com/awtainq/Alice-apple-music/tree/v0.3.6/rust
+https://github.com/awtainq/Alice-apple-music/tree/v0.3.7/rust
 
 Apple Music subscription playback and recommendations protocol adapted from
 Music Assistant (Apache-2.0): https://github.com/music-assistant/server
-Historical Glagol backend (removed in 0.3.6) was adapted from AlexxIT/YandexStation (MIT):
+Historical Glagol backend (removed in 0.3.7) was adapted from AlexxIT/YandexStation (MIT):
 https://github.com/AlexxIT/YandexStation
 Local voice IPC documented by Marker284/yandex-station-extended (CC BY 4.0),
 rison1337/Alisa-ChatGPT-voice-assistant, YSE contrib/alice-say.py and
