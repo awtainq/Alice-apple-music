@@ -39,7 +39,15 @@ pub fn volume_gain(volume: Option<f64>, limit: f64) -> f64 {
     let Some(v) = volume.filter(|v| v.is_finite()) else {
         return 0.;
     };
-    v.clamp(0., 1.).min(limit.clamp(0., 1.))
+    // The shared ALSA Master already applies the native level. Applying it
+    // here again squares the attenuation. Only enforce an optional ceiling.
+    let v = v.clamp(0., 1.);
+    let limit = limit.clamp(0., 1.);
+    if v == 0. || limit == 0. {
+        0.
+    } else {
+        (limit / v).min(1.)
+    }
 }
 fn attenuate(pcm: &mut [u8], gain: f64) {
     for sample in pcm.as_chunks_mut::<2>().0 {
@@ -208,9 +216,12 @@ mod tests {
         assert_eq!(volume_gain(Some(f64::NAN), 1.), 0.);
     }
     #[test]
-    fn volume_one_is_attenuated_and_respects_test_limit() {
-        assert_eq!(volume_gain(Some(0.1), 1.), 0.1);
-        assert_eq!(volume_gain(Some(1.), 0.1), volume_gain(Some(0.1), 1.));
+    fn native_mixer_level_is_applied_once_and_ceiling_still_works() {
+        for level in [0.05, 0.1, 0.5, 1.] {
+            assert_eq!(volume_gain(Some(level), 1.), 1.);
+        }
+        assert_eq!(volume_gain(Some(1.), 0.1), 0.1);
+        assert_eq!(volume_gain(Some(0.2), 0.1), 0.5);
         assert_eq!(volume_gain(Some(0.), 1.), 0.);
     }
     #[test]
@@ -266,7 +277,7 @@ mod process_tests {
         assert!(!audio.active());
         let pcm = tokio::fs::read(dir.join("sink.out")).await.unwrap();
         assert_eq!(pcm.len(), 4);
-        assert!((i16::from_le_bytes(pcm[..2].try_into().unwrap()) - 3277).abs() <= 1);
+        assert_eq!(i16::from_le_bytes(pcm[..2].try_into().unwrap()), i16::MAX);
         tokio::fs::remove_dir_all(dir).await.unwrap();
     }
     #[tokio::test]
