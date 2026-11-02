@@ -227,7 +227,7 @@ impl Player {
     async fn handoff(&self) -> Result<()> {
         wire::pause_native().await
     }
-    async fn play(&mut self, t: Track, position: f64) -> Result<()> {
+    async fn play(&mut self, t: Track, position: f64, intro: Option<String>) -> Result<()> {
         let prepare = async {
             let at = Instant::now();
             let file = self.apple.prepare(&t).await?;
@@ -237,6 +237,9 @@ impl Player {
         let handoff = async {
             let at = Instant::now();
             self.handoff().await?;
+            if let Some(intro) = intro {
+                self.shared.speak(intro);
+            }
             println!("music_handoff elapsed_ms={}", at.elapsed().as_millis());
             Ok::<_, anyhow::Error>(())
         };
@@ -330,7 +333,7 @@ impl Player {
             .cloned()
             .ok_or_else(|| anyhow!("Нет следующей песни."))?;
         let old = self.view.queue.current.clone();
-        self.play(t, 0.).await?;
+        self.play(t, 0., None).await?;
         self.view.queue.upcoming.remove(0);
         if let Some(t) = old {
             self.view.queue.history.push(t);
@@ -372,10 +375,7 @@ impl Player {
                     upcoming: tracks,
                     ..Queue::default()
                 };
-                self.play(first, 0.).await?;
-                if let Some(intro) = intro {
-                    self.shared.speak(intro);
-                }
+                self.play(first, 0., intro).await?;
                 self.prefetch().await;
                 Ok("Включаю.".into())
             }
@@ -389,7 +389,7 @@ impl Player {
                     .cloned()
                     .ok_or_else(|| anyhow!("Предыдущей песни пока нет."))?;
                 let old = self.view.queue.current.clone();
-                self.play(t, 0.).await?;
+                self.play(t, 0., None).await?;
                 self.view.queue.history.pop();
                 if let Some(t) = old {
                     self.view.queue.upcoming.insert(0, t);
@@ -417,7 +417,7 @@ impl Player {
                         .current
                         .clone()
                         .ok_or_else(|| anyhow!("Сначала назовите песню."))?;
-                    self.play(t, self.view.queue.position).await?;
+                    self.play(t, self.view.queue.position, None).await?;
                 } else if j.voice {
                     self.handoff().await?;
                 }
@@ -469,7 +469,7 @@ impl Player {
                         .current
                         .clone()
                         .ok_or_else(|| anyhow!("Сначала назовите песню."))?;
-                    self.play(t, position).await?;
+                    self.play(t, position, None).await?;
                 } else {
                     self.view.queue.position = position;
                 }

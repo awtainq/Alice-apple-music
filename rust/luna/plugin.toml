@@ -1,6 +1,6 @@
 id = "alice-apple-music"
 name = "Alice × Apple Music"
-version = "0.3.5"
+version = "0.3.6"
 entry = "bin/alice-apple-music"
 description = "Apple Music по голосу: песни, очередь, рекомендации и название трека. Нативный плеер для Luna."
 permissions = ["exec"]
