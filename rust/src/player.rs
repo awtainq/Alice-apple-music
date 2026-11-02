@@ -224,19 +224,23 @@ impl Player {
         self.last_checkpoint = Instant::now();
         Ok(())
     }
-    async fn handoff(&self, voice: bool) -> Result<()> {
-        if voice {
-            let deadline = Instant::now() + Duration::from_secs(8);
-            while *self.shared.speech.borrow() != 0 && Instant::now() < deadline {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        }
-        // One ordinary SDK pause hands native music back to Alice; no handler replacement.
+    async fn handoff(&self) -> Result<()> {
         wire::pause_native().await
     }
-    async fn play(&mut self, t: Track, voice: bool, position: f64) -> Result<()> {
-        let file = self.apple.prepare(&t).await?;
-        self.handoff(voice).await?;
+    async fn play(&mut self, t: Track, position: f64) -> Result<()> {
+        let prepare = async {
+            let at = Instant::now();
+            let file = self.apple.prepare(&t).await?;
+            println!("music_prepare elapsed_ms={}", at.elapsed().as_millis());
+            Ok::<_, anyhow::Error>(file)
+        };
+        let handoff = async {
+            let at = Instant::now();
+            self.handoff().await?;
+            println!("music_handoff elapsed_ms={}", at.elapsed().as_millis());
+            Ok::<_, anyhow::Error>(())
+        };
+        let (file, ()) = tokio::try_join!(prepare, handoff)?;
         if self.shared.view.read().await.airplay {
             bail!("Сначала отключите AirPlay на телефоне.");
         }
@@ -314,7 +318,7 @@ impl Player {
             }));
         }
     }
-    async fn next(&mut self, voice: bool) -> Result<String> {
+    async fn next(&mut self) -> Result<String> {
         if self.view.queue.upcoming.is_empty() {
             self.refill().await?;
         }
@@ -326,7 +330,7 @@ impl Player {
             .cloned()
             .ok_or_else(|| anyhow!("Нет следующей песни."))?;
         let old = self.view.queue.current.clone();
-        self.play(t, voice, 0.).await?;
+        self.play(t, 0.).await?;
         self.view.queue.upcoming.remove(0);
         if let Some(t) = old {
             self.view.queue.history.push(t);
@@ -343,7 +347,21 @@ impl Player {
         }
         match j.action.as_str() {
             "play" | "auto" | "artist" | "album" | "playlist" | "library" => {
+                // A new selection supersedes speculative work for the old queue.
+                if let Some(task) = self.prefetch.take() {
+                    task.abort();
+                    let _ = task.await;
+                }
+                if let Some(task) = self.recommendations.take() {
+                    task.abort();
+                    let _ = task.await;
+                }
+                let search_at = Instant::now();
                 let mut tracks = self.apple.select(&j.query, &j.action).await?;
+                println!(
+                    "music_search elapsed_ms={}",
+                    search_at.elapsed().as_millis()
+                );
                 if tracks.is_empty() {
                     bail!("В Apple Music ничего не найдено.");
                 }
@@ -354,14 +372,14 @@ impl Player {
                     upcoming: tracks,
                     ..Queue::default()
                 };
-                self.play(first, j.voice, 0.).await?;
+                self.play(first, 0.).await?;
                 if let Some(intro) = intro {
                     self.shared.speak(intro);
                 }
                 self.prefetch().await;
                 Ok("Включаю.".into())
             }
-            "next" => self.next(j.voice).await,
+            "next" => self.next().await,
             "previous" => {
                 let t = self
                     .view
@@ -371,7 +389,7 @@ impl Player {
                     .cloned()
                     .ok_or_else(|| anyhow!("Предыдущей песни пока нет."))?;
                 let old = self.view.queue.current.clone();
-                self.play(t, j.voice, 0.).await?;
+                self.play(t, 0.).await?;
                 self.view.queue.history.pop();
                 if let Some(t) = old {
                     self.view.queue.upcoming.insert(0, t);
@@ -385,7 +403,7 @@ impl Player {
                     self.view.queue.position = self.audio.stop().await;
                 }
                 if j.voice {
-                    self.handoff(true).await?;
+                    self.handoff().await?;
                 }
                 self.view.state = "paused".into();
                 self.checkpoint().await?;
@@ -399,9 +417,9 @@ impl Player {
                         .current
                         .clone()
                         .ok_or_else(|| anyhow!("Сначала назовите песню."))?;
-                    self.play(t, j.voice, self.view.queue.position).await?;
+                    self.play(t, self.view.queue.position).await?;
                 } else if j.voice {
-                    self.handoff(true).await?;
+                    self.handoff().await?;
                 }
                 self.prefetch().await;
                 Ok("Продолжаю.".into())
@@ -416,7 +434,7 @@ impl Player {
                 self.view.queue.seed = Some(t.id.clone());
                 self.view.queue.upcoming.clear();
                 self.view.queue.seen = HashSet::from([t.id.clone()]);
-                self.next(j.voice).await
+                self.next().await
             }
             "speak_text" => {
                 self.shared.speak(j.query.chars().take(700).collect());
@@ -451,7 +469,7 @@ impl Player {
                         .current
                         .clone()
                         .ok_or_else(|| anyhow!("Сначала назовите песню."))?;
-                    self.play(t, false, position).await?;
+                    self.play(t, position).await?;
                 } else {
                     self.view.queue.position = position;
                 }
@@ -486,6 +504,16 @@ impl Player {
         } else {
             self.execute(&job).await
         };
+        if result.is_ok()
+            && job.voice
+            && !matches!(job.action.as_str(), "speak_text" | "announce_now" | "now")
+        {
+            println!(
+                "music_command action={} elapsed_ms={}",
+                job.action,
+                job.at.elapsed().as_millis()
+            );
+        }
         if result.is_err() {
             self.view = before;
             self.view.state = if self.audio.active() {
@@ -543,7 +571,7 @@ impl Player {
         }
         if self.audio.finished().await? && self.view.state == "playing" {
             self.view.state = "paused".into();
-            if self.next(false).await.is_ok() {
+            if self.next().await.is_ok() {
                 self.view.auto_advances += 1;
             }
         }

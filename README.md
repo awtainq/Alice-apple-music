@@ -42,7 +42,7 @@ binary-service `.yap`. В Luna должно быть разрешено `allow_p
 Проверено на Станции Миди с device tree `yandex,station-midi` (Luna: `yandexmidi`).
 Другие модели пока не проверены.
 
-1. Скачайте **`alice-apple-music-luna-0.3.4-aarch64.yap`** из
+1. Скачайте **`alice-apple-music-luna-0.3.5-aarch64.yap`** из
    [Releases](https://github.com/awtainq/Alice-apple-music/releases/latest).
 2. В Luna откройте **«Установка .yap»**, выберите файл и загрузите его.
 3. При первой установке добавьте собственный [профиль Apple Music и Яндекса](docs/AUTH.md)

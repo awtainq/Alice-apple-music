@@ -251,7 +251,7 @@ impl Voice {
                 query,
                 voice: true,
                 reply: None,
-                at: Instant::now(),
+                at: routing.last_at,
                 revision,
             });
         } else if let Some(assistant) = &self.assistant {

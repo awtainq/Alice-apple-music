@@ -48,6 +48,29 @@ pub struct Apple {
     gate: Arc<Mutex<tokio::time::Instant>>,
     prepare_gate: Arc<Mutex<()>>,
 }
+// Space request starts, not entire HTTP responses. Slow recommendations must
+// not hold the foreground search behind a network round trip.
+async fn paced<T>(
+    gate: &Mutex<tokio::time::Instant>,
+    request: impl std::future::Future<Output = T>,
+) -> T {
+    {
+        let mut last = gate.lock().await;
+        tokio::time::sleep(Duration::from_millis(300).saturating_sub(last.elapsed())).await;
+        *last = tokio::time::Instant::now();
+    }
+    request.await
+}
+struct TemporaryAudio {
+    input: PathBuf,
+    output: PathBuf,
+}
+impl Drop for TemporaryAudio {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.input);
+        let _ = std::fs::remove_file(&self.output);
+    }
+}
 async fn response(r: Result<Response, reqwest::Error>) -> Result<Response> {
     let r = r.map_err(|e| anyhow!(e.without_url()))?;
     ensure!(
@@ -87,10 +110,6 @@ impl Apple {
             "Invalid Apple API path"
         );
         for attempt in 0..5 {
-            let mut last = self.gate.lock().await;
-            let wait = Duration::from_millis(300).saturating_sub(last.elapsed());
-            tokio::time::sleep(wait).await;
-            *last = tokio::time::Instant::now();
             let mut request = self
                 .http
                 .request(
@@ -103,9 +122,10 @@ impl Apple {
             if method == Method::POST {
                 request = request.json(&json!({}));
             }
-            let r = request.send().await.map_err(|e| anyhow!(e.without_url()))?;
+            let r = paced(&self.gate, request.send())
+                .await
+                .map_err(|e| anyhow!(e.without_url()))?;
             let code = r.status().as_u16();
-            drop(last);
             if [429, 500, 502, 503, 504].contains(&code) {
                 tokio::time::sleep(Duration::from_secs(1 << attempt.min(3))).await;
                 continue;
@@ -345,6 +365,10 @@ impl Apple {
         let (url, key) = self.asset(&t.id).await?;
         let input = self.cache.join(format!("{}.download", t.id));
         let output = self.cache.join(format!("{}.part.m4a", t.id));
+        let _temporary = TemporaryAudio {
+            input: input.clone(),
+            output: output.clone(),
+        };
         let result: Result<()> = async {
             let r = response(self.http.get(&url).send().await).await?;
             let mut stream = r.bytes_stream();
@@ -450,5 +474,63 @@ mod tests {
     #[test]
     fn normalization_handles_cyrillic() {
         assert_eq!(normalize("Ёлка — LIVE"), "елка live");
+    }
+}
+
+#[cfg(test)]
+mod priority_tests {
+    use super::*;
+    #[tokio::test]
+    async fn slow_request_does_not_serialize_other_network_responses() {
+        let gate = Arc::new(Mutex::new(
+            tokio::time::Instant::now() - Duration::from_secs(1),
+        ));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let first_gate = gate.clone();
+        let first = tokio::spawn(async move {
+            paced(&first_gate, async {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+            })
+            .await;
+        });
+        started_rx.await.unwrap();
+        let at = tokio::time::Instant::now();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), paced(&gate, async { 42 }))
+                .await
+                .unwrap(),
+            42
+        );
+        assert!(at.elapsed() >= Duration::from_millis(250));
+        assert!(!first.is_finished());
+        let _ = release_tx.send(());
+        first.await.unwrap();
+    }
+    #[tokio::test]
+    async fn cancelled_prefetch_removes_partial_files() {
+        let directory =
+            std::env::temp_dir().join(format!("apple-prefetch-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir(&directory).await.unwrap();
+        let input = directory.join("12.download");
+        let output = directory.join("12.part.m4a");
+        tokio::fs::write(&input, b"partial").await.unwrap();
+        tokio::fs::write(&output, b"partial").await.unwrap();
+        let (first, second) = (input.clone(), output.clone());
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _temporary = TemporaryAudio {
+                input: first,
+                output: second,
+            };
+            let _ = tx.send(());
+            std::future::pending::<()>().await;
+        });
+        rx.await.unwrap();
+        task.abort();
+        let _ = task.await;
+        assert!(!input.exists() && !output.exists());
+        tokio::fs::remove_dir(directory).await.unwrap();
     }
 }
