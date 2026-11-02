@@ -1,6 +1,6 @@
 [package]
 name = "alice-apple-music"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Standalone Apple Music player for a rooted Station Midi and Luna"

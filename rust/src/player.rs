@@ -69,6 +69,21 @@ pub struct Job {
     pub at: Instant,
     pub revision: Option<u64>,
 }
+fn music_intro(title: &str) -> String {
+    let tags = regex::Regex::new(r"<[^>]{0,200}>").expect("static title pattern");
+    let title = tags.replace_all(title, "");
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title = title.chars().take(80).collect::<String>();
+    let title = title.trim().trim_end_matches(['.', '!', '?']);
+    format!(
+        "Включаю {}.",
+        if title.is_empty() {
+            "песню"
+        } else {
+            title
+        }
+    )
+}
 async fn current_job<T>(
     mut intents: watch::Receiver<u64>,
     revision: u64,
@@ -333,12 +348,16 @@ impl Player {
                     bail!("В Apple Music ничего не найдено.");
                 }
                 let first = tracks.remove(0);
+                let intro = j.voice.then(|| music_intro(&first.title));
                 self.view.queue = Queue {
                     seed: Some(first.id.clone()),
                     upcoming: tracks,
                     ..Queue::default()
                 };
                 self.play(first, j.voice, 0.).await?;
+                if let Some(intro) = intro {
+                    self.shared.speak(intro);
+                }
                 self.prefetch().await;
                 Ok("Включаю.".into())
             }
@@ -544,5 +563,20 @@ impl Player {
             }
         }
         self.audio.stop().await;
+    }
+}
+
+#[cfg(test)]
+mod intro_tests {
+    use super::*;
+    #[test]
+    fn short_intro_contains_only_the_song_title() {
+        assert_eq!(music_intro("Babydoll"), "Включаю Babydoll.");
+        assert_eq!(
+            music_intro("<audio src='x'/> \n Танцуй сама!"),
+            "Включаю Танцуй сама."
+        );
+        assert_eq!(music_intro(""), "Включаю песню.");
+        assert!(music_intro(&"я".repeat(500)).chars().count() <= 89);
     }
 }

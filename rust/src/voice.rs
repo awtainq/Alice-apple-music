@@ -235,8 +235,14 @@ impl Voice {
                 return;
             };
             routing.native_until = None;
-            if action == "announce_now" {
-                let _ = wire::cancel_dialog(self.shared.config.recognition_port).await;
+            // Claim only recognized music requests, before searching or speaking.
+            // Native weather/home requests returned above remain untouched.
+            if wire::cancel_dialog(self.shared.config.recognition_port)
+                .await
+                .is_err()
+            {
+                eprintln!("music_cancel_failed");
+                return;
             }
             let revision = self.shared.begin_intent(&action);
             println!("voice action={action} source=final_text");
@@ -249,7 +255,7 @@ impl Voice {
                 revision,
             });
         } else if let Some(assistant) = &self.assistant {
-            // Cancellation is for Gemini answers only, never musical transport.
+            // Non-native questions are delegated to Gemini.
             if wire::cancel_dialog(self.shared.config.recognition_port)
                 .await
                 .is_ok()
@@ -350,5 +356,82 @@ mod tests {
         assert!(!ids.duplicate(Some("one")));
         assert!(!ids.duplicate(Some("two")));
         assert!(ids.duplicate(Some("one")));
+    }
+}
+
+#[cfg(test)]
+mod routing_tests {
+    use super::*;
+    use crate::{config::Config, player::View, volume::Volume};
+    use serde_json::json;
+    use tokio::sync::{mpsc, watch, RwLock};
+    fn fixture(port: u16) -> (Voice, mpsc::Receiver<Job>) {
+        let config:Config=serde_json::from_value(json!({"apple_app_token":"fixture","apple_user_token":"fixture","agent_token":"fixture","recognition_port":port})).unwrap();
+        let (tx, rx) = mpsc::channel(8);
+        let shared = Shared {
+            view: Arc::new(RwLock::new(View::default())),
+            volume: Volume::fixture(),
+            config: Arc::new(config),
+            tx,
+            intent: watch::channel(0).0,
+            speech: watch::channel(u64::MAX).0,
+            duck: watch::channel(None).0,
+        };
+        let voice = Voice {
+            shared,
+            assistant: None,
+            routing: Arc::new(Mutex::new(Routing {
+                requests: Requests::default(),
+                last_text: String::new(),
+                last_at: Instant::now(),
+                native_until: None,
+            })),
+        };
+        (voice, rx)
+    }
+    #[tokio::test]
+    async fn music_cancels_native_dialog_before_dispatch() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (voice, mut rx) = fixture(port);
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut methods = vec![];
+            for _ in 0..4 {
+                let frame = wire::read_frame(&mut socket).await.unwrap();
+                let remote = wire::get_bytes(&frame, 252).unwrap().unwrap();
+                let request = wire::get_bytes(&remote, 8).unwrap().unwrap();
+                methods.push(wire::get_number(&request, 1).unwrap().unwrap());
+            }
+            assert_eq!(methods, vec![1, 6, 14, 3]);
+            assert!(rx.try_recv().is_err());
+            rx
+        });
+        voice
+            .accept(3, "включи песню Babydoll", Some("music-one"))
+            .await;
+        let mut rx = server.await.unwrap();
+        let job = rx.try_recv().unwrap();
+        assert_eq!(job.action, "play");
+        assert_eq!(job.query, "babydoll");
+        voice
+            .accept(3, "включи песню Babydoll", Some("music-one"))
+            .await;
+        assert!(rx.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn weather_does_not_cancel_native_dialog() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (voice, mut rx) = fixture(port);
+        voice
+            .accept(3, "какая погода завтра", Some("weather-one"))
+            .await;
+        assert!(rx.try_recv().is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(40), listener.accept())
+                .await
+                .is_err()
+        );
     }
 }

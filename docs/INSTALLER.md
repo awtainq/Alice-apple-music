@@ -29,7 +29,7 @@ ssh -p 2222 -N -L 18098:127.0.0.1:8098 root@IP_КОЛОНКИ
 В другом терминале компьютера загрузите скачанный пакет:
 
 ```sh
-curl --fail-with-body -F 'package=@alice-apple-music-luna-0.3.3-aarch64.yap' \
+curl --fail-with-body -F 'package=@alice-apple-music-luna-0.3.4-aarch64.yap' \
   http://127.0.0.1:18098/api/plugins
 ```
 
