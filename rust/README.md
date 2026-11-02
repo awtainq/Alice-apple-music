@@ -1,22 +1,22 @@
 # Alice × Apple Music · Luna
 
-Нативный плеер Apple Music для рутованной Станции Миди: один процесс Rust,
+Нативный плеер Apple Music для рутованной Станции Миди: управляющий процесс Rust,
 голосовой поиск, очередь, рекомендации и название трека.
 
 ## Установка
 
-Скачайте `alice-apple-music-luna-0.2.3-aarch64.yap` из
+Скачайте `alice-apple-music-luna-0.3.0-aarch64.yap` из
 [Releases](https://github.com/awtainq/Alice-apple-music/releases/latest) и загрузите
 его в Luna через **«Установка .yap»**. Добавьте личный профиль и включите сервис
 **Alice × Apple Music** (`alice-apple-music`).
 
-Нужны ARM64 Entware с `/opt/bin/ffmpeg`, совместимая Luna с поддержкой локальных
+Нужны ARM64 Entware с `/opt/bin/ffmpeg`, штатный `/usr/bin/aplay`, совместимая Luna с поддержкой локальных
 binary services и разрешением `allow_plugin_binaries = true`.
 
 [Инструкция установки](https://github.com/awtainq/Alice-apple-music/blob/main/docs/INSTALLER.md) ·
 [Авторизация](https://github.com/awtainq/Alice-apple-music/blob/main/docs/AUTH.md)
 
-Пакет использует root/exec и напрямую читает локальный IPC и command spotter
+Пакет использует root/exec и напрямую читает финальные фразы локального IPC
 для произвольных названий песен. Профиль и очередь находятся вне пакета,
 в соседнем с `plugins/` каталоге `apple-music-private`. Обновление `.yap` их
 не удаляет. Кэш находится в `/tmp/alice-apple-music-cache`.
@@ -25,8 +25,9 @@ binary services и разрешением `allow_plugin_binaries = true`.
 
 Только `127.0.0.1:8099`. GET `/api` возвращает состояние,
 POST `/api` принимает команды: `{"action":"next"}`. Оба запроса требуют
-`Authorization: Bearer <agent_token>`. Аудио защищено случайным HMAC-токеном
-каждого запуска и поддерживает HTTP Range.
+`Authorization: Bearer <agent_token>`. Аудиосервера HTTP нет: PCM выводится через штатный `aplay`.
+Громкость читается из штатного сохранённого уровня Миди; музыкальное управление
+не зависит от Glagol.
 
 При подключении AirPlay очередь ставится на паузу и уступает команды телефону.
 Для этого в профиле задайте `airplay_bus` равным `/run/station-airplay/private-bus`.
@@ -77,7 +78,7 @@ Cargo настроен на включённый `vendor/`; используйт
 ```sh
 yam-publish pack --source yam --platform yandexmidi \
   --profiles /путь/к/yam/platforms \
-  --output dist/awtainq-apple-music-0.2.3-yandexmidi.yampkg
+  --output dist/awtainq-apple-music-0.3.0-yandexmidi.yampkg
 ```
 
 В `.yampkg` включается уже собранный `.yap`; сначала выполните `xtask package`.

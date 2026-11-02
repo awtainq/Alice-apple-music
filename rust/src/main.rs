@@ -1,11 +1,12 @@
 mod airplay;
 mod apple;
+mod audio;
 mod config;
 mod gemini;
 mod http;
 mod player;
-mod station;
 mod voice;
+mod volume;
 mod wire;
 use anyhow::{ensure, Result};
 use clap::Parser;
@@ -104,8 +105,8 @@ async fn run() -> Result<()> {
         );
         return Ok(());
     }
-    let station = station::Station::start(config.clone(), apple.http.clone());
-    let (player, rx) = player::Player::new(apple, station, a.private.clone());
+    let volume = volume::Volume::start(config.native_volume_file.clone(), config.native_volume_max);
+    let (player, rx) = player::Player::new(apple, volume, a.private.clone());
     let shared = player.shared.clone();
     let actor = tokio::spawn(player.run(rx));
     if let Some(bus) = &config.airplay_bus {

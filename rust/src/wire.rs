@@ -1,16 +1,10 @@
 use anyhow::{anyhow, bail, ensure, Result};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 pub const MAX_FRAME: usize = 600_000;
-pub fn epoch_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
 pub fn varint(mut n: u64) -> Vec<u8> {
     let mut o = vec![];
     while n >= 128 {
@@ -110,16 +104,6 @@ pub fn recognition(frame: &[u8]) -> Result<Option<(u64, String)>> {
             return Ok(Some((3, text)));
         }
     }
-    if matches!(phase, None | Some(3)) {
-        if let Some(asr) = get_bytes(&body, 15)? {
-            if get_number(&asr, 2)? == Some(1) {
-                let text = String::from_utf8(get_bytes(&asr, 1)?.unwrap_or_default())?;
-                if !text.is_empty() {
-                    return Ok(Some((3, text)));
-                }
-            }
-        }
-    }
     let state = phase.unwrap_or(0);
     let text = if state == 3 {
         String::from_utf8(get_bytes(&body, 2)?.unwrap_or_default())?
@@ -163,6 +147,27 @@ pub async fn cancel_dialog(port: u16) -> Result<()> {
         Ok::<(), anyhow::Error>(())
     })
     .await;
+    Ok(())
+}
+pub async fn pause_native(port: u16) -> Result<()> {
+    let mut socket = TcpStream::connect(("127.0.0.1", port)).await?;
+    let directive = [
+        bytes(1, b"player_pause"),
+        bytes(3, b"player_pause"),
+        bytes(21, uuid::Uuid::new_v4().to_string().as_bytes()),
+    ]
+    .concat();
+    let method = [number(1, 0), bytes(3, &directive)].concat();
+    let remote = [
+        bytes(7, b"DirectiveSequencer"),
+        bytes(25, b"AppleMusicHandoff"),
+        bytes(23, &method),
+    ]
+    .concat();
+    let envelope = [bytes(252, &remote), number(253, 210)].concat();
+    socket.write_u32_le(envelope.len() as u32).await?;
+    socket.write_all(&envelope).await?;
+    tokio::time::sleep(Duration::from_millis(200)).await;
     Ok(())
 }
 pub async fn speak(port: u16, text: &str) -> Result<()> {
@@ -225,31 +230,6 @@ mod tests {
         assert_eq!(fields(&d).unwrap(), vec![(1, Field::Number(u64::MAX))]);
         d.push(0);
         assert!(fields(&d).is_err());
-    }
-}
-
-#[cfg(test)]
-mod asr_tests {
-    use super::*;
-    #[test]
-    fn command_origin_final_asr_is_recognized() {
-        let mut asr = bytes(1, "играй".as_bytes());
-        asr.extend(number(2, 1));
-        let mut body = number(1, 3);
-        body.extend(bytes(15, &asr));
-        let mut frame = bytes(252, &body);
-        frame.extend(number(253, 3));
-        assert_eq!(recognition(&frame).unwrap(), Some((3, "играй".into())));
-    }
-    #[test]
-    fn idle_snapshot_does_not_replay_old_asr() {
-        let mut asr = bytes(1, "играй".as_bytes());
-        asr.extend(number(2, 1));
-        let mut body = number(1, 0);
-        body.extend(bytes(15, &asr));
-        let mut frame = bytes(252, &body);
-        frame.extend(number(253, 3));
-        assert_eq!(recognition(&frame).unwrap(), Some((0, String::new())));
     }
 }
 
