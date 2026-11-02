@@ -57,6 +57,6 @@ YAM владеет только командой импорта и исходн�
 GPL-3.0-only. Полные соответствующие исходники и сборка:
 [GitHub](https://github.com/awtainq/Alice-apple-music),
 [Releases](https://github.com/awtainq/Alice-apple-music/releases).
-Архив `alice-apple-music-0.3.1-source.tar.gz` включает исходники команды
+Архив `alice-apple-music-0.3.2-source.tar.gz` включает исходники команды
 импорта и закреплённые зависимости. Личные токены, ключи клиента и музыка
 не распространяются.

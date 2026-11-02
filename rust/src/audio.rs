@@ -39,12 +39,7 @@ pub fn volume_gain(volume: Option<f64>, limit: f64) -> f64 {
     let Some(v) = volume.filter(|v| v.is_finite()) else {
         return 0.;
     };
-    let v = v.clamp(0., 1.).min(limit.clamp(0., 1.));
-    if v == 0. {
-        0.
-    } else {
-        10f64.powf((v * 30. - 30.) / 20.)
-    }
+    v.clamp(0., 1.).min(limit.clamp(0., 1.))
 }
 fn attenuate(pcm: &mut [u8], gain: f64) {
     for sample in pcm.as_chunks_mut::<2>().0 {
@@ -214,7 +209,7 @@ mod tests {
     }
     #[test]
     fn volume_one_is_attenuated_and_respects_test_limit() {
-        assert!((volume_gain(Some(0.1), 1.) - 0.04466836).abs() < 1e-6);
+        assert_eq!(volume_gain(Some(0.1), 1.), 0.1);
         assert_eq!(volume_gain(Some(1.), 0.1), volume_gain(Some(0.1), 1.));
         assert_eq!(volume_gain(Some(0.), 1.), 0.);
     }
@@ -271,7 +266,7 @@ mod process_tests {
         assert!(!audio.active());
         let pcm = tokio::fs::read(dir.join("sink.out")).await.unwrap();
         assert_eq!(pcm.len(), 4);
-        assert!(i16::from_le_bytes(pcm[..2].try_into().unwrap()).abs() < 1600);
+        assert!((i16::from_le_bytes(pcm[..2].try_into().unwrap()) - 3277).abs() <= 1);
         tokio::fs::remove_dir_all(dir).await.unwrap();
     }
     #[tokio::test]
