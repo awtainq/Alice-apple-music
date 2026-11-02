@@ -217,7 +217,7 @@ impl Player {
             }
         }
         // One ordinary SDK pause hands native music back to Alice; no handler replacement.
-        wire::pause_native(self.shared.config.recognition_port).await
+        wire::pause_native().await
     }
     async fn play(&mut self, t: Track, voice: bool, position: f64) -> Result<()> {
         let file = self.apple.prepare(&t).await?;

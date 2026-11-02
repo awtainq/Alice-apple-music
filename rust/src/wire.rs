@@ -149,26 +149,73 @@ pub async fn cancel_dialog(port: u16) -> Result<()> {
     .await;
     Ok(())
 }
-pub async fn pause_native(port: u16) -> Result<()> {
-    let mut socket = TcpStream::connect(("127.0.0.1", port)).await?;
-    let directive = [
-        bytes(1, b"player_pause"),
-        bytes(3, b"player_pause"),
-        bytes(21, uuid::Uuid::new_v4().to_string().as_bytes()),
-    ]
-    .concat();
-    let method = [number(1, 0), bytes(3, &directive)].concat();
-    let remote = [
-        bytes(7, b"DirectiveSequencer"),
-        bytes(25, b"AppleMusicHandoff"),
-        bytes(23, &method),
-    ]
-    .concat();
-    let envelope = [bytes(252, &remote), number(253, 210)].concat();
-    socket.write_u32_le(envelope.len() as u32).await?;
-    socket.write_all(&envelope).await?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    Ok(())
+async fn native_pause_command(mut command: tokio::process::Command) -> Result<()> {
+    use std::process::Stdio;
+    use tokio::io::AsyncBufReadExt;
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn()?;
+    let result: Result<()> = async {
+        let mut input = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("Missing native CLI input"))?;
+        let output = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("Missing native CLI output"))?;
+        let mut reader = tokio::io::BufReader::new(output);
+        async fn marker(
+            reader: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
+            marker: &[u8],
+        ) -> Result<()> {
+            loop {
+                let mut line = vec![];
+                let n = reader.take(16384).read_until(b'\n', &mut line).await?;
+                ensure!(n != 0, "Native CLI exited before acknowledgement");
+                if line.windows(marker.len()).any(|part| part == marker) {
+                    return Ok(());
+                }
+            }
+        }
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            marker(&mut reader, b"Connected to DirectiveSequencer"),
+        )
+        .await??;
+        input.write_all(b"o").await?;
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            marker(&mut reader, b"UserInput: Player Pause"),
+        )
+        .await??;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        input.write_all(b"x").await?;
+        drop(input);
+        Ok(())
+    }
+    .await;
+    if result.is_err()
+        || tokio::time::timeout(Duration::from_millis(500), child.wait())
+            .await
+            .is_err()
+    {
+        let _ = child.kill().await;
+    }
+    result
+}
+pub async fn pause_native() -> Result<()> {
+    // Use the firmware SDK's ordinary Player Pause input, as station-airplay does.
+    // No playback-state guessing, directive-handler replacement or hand-built music RPC.
+    let mut command = tokio::process::Command::new("/bin/sh");
+    command
+        .args(["-c", "exec /system/vendor/quasar/maind --cli 2>&1"])
+        .env_remove("LD_PRELOAD")
+        .env("LD_LIBRARY_PATH", "/system/vendor/quasar/libs");
+    native_pause_command(command).await
 }
 pub async fn speak(port: u16, text: &str) -> Result<()> {
     let mut socket = TcpStream::connect(("127.0.0.1", port)).await?;
@@ -281,5 +328,36 @@ mod replay_regression_tests {
         });
         cancel_dialog(port).await.unwrap();
         check.await.unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod native_pause_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    #[tokio::test]
+    async fn native_pause_sends_only_pause_and_exit_then_reaps_child() {
+        let path = std::env::temp_dir().join(format!("apple-native-cli-{}", uuid::Uuid::new_v4()));
+        tokio::fs::write(&path,b"#!/bin/sh\nprintf 'Connected to DirectiveSequencer\\nUserInput: Player Pause\\n'\nexec cat > \"$0.input\"\n").await.unwrap();
+        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .await
+            .unwrap();
+        native_pause_command(tokio::process::Command::new(&path))
+            .await
+            .unwrap();
+        let input = tokio::fs::read(format!("{}.input", path.display()))
+            .await
+            .unwrap();
+        assert_eq!(input, b"ox");
+        tokio::fs::remove_file(format!("{}.input", path.display()))
+            .await
+            .unwrap();
+        tokio::fs::remove_file(path).await.unwrap();
+    }
+    #[tokio::test]
+    async fn missing_native_ack_is_an_error() {
+        let mut command = tokio::process::Command::new("/bin/sh");
+        command.args(["-c", "printf 'Connected to DirectiveSequencer\\n'; exit 0"]);
+        assert!(native_pause_command(command).await.is_err());
     }
 }

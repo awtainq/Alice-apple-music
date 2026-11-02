@@ -1,5 +1,5 @@
 name: awtainq/apple-music
-version: 0.3.0
+version: 0.3.1
 license: GPL-3.0-only
 description: Apple Music по голосу на Станции Миди — пакет .yap и импорт в Luna
 homepage: https://github.com/awtainq/Alice-apple-music
@@ -8,7 +8,7 @@ targets: [yandexmidi]
 depends: [yam/luna =0.2.0]
 files:
   bin/awtainq-apple-music: ../rust/target/$YAM_TRIPLE/release/awtainq-apple-music
-  share/awtainq.apple-music/apple-music.yap: ../dist/alice-apple-music-luna-0.3.0-aarch64.yap
+  share/awtainq.apple-music/apple-music.yap: ../dist/alice-apple-music-luna-0.3.1-aarch64.yap
   share/awtainq.apple-music/README.md: README.md
   share/awtainq.apple-music/LICENSE: ../LICENSE
   share/awtainq.apple-music/NOTICE: ../NOTICE
