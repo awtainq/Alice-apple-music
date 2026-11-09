@@ -5,7 +5,7 @@
 
 ## Установка
 
-Скачайте `alice-apple-music-luna-0.3.8-aarch64.yap` из
+Скачайте `alice-apple-music-luna-0.3.9-aarch64.yap` из
 [Releases](https://github.com/awtainq/Alice-apple-music/releases/latest) и загрузите
 его в Luna через **«Установка .yap»**. Добавьте личный профиль и включите сервис
 **Alice × Apple Music** (`alice-apple-music`).
@@ -78,7 +78,7 @@ Cargo настроен на включённый `vendor/`; используйт
 ```sh
 yam-publish pack --source yam --platform yandexmidi \
   --profiles /путь/к/yam/platforms \
-  --output dist/awtainq-apple-music-0.3.8-yandexmidi.yampkg
+  --output dist/awtainq-apple-music-0.3.9-yandexmidi.yampkg
 ```
 
 В `.yampkg` включается уже собранный `.yap`; сначала выполните `xtask package`.

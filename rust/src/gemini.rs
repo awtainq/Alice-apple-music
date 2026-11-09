@@ -36,6 +36,30 @@ fn named_device(text: &str, names: &[String]) -> bool {
         !parts.is_empty() && words.windows(parts.len()).any(|window| window == parts)
     })
 }
+fn volume_command(words: &[&str]) -> bool {
+    let words = match words {
+        ["сделай" | "поставь" | "установи", rest @ ..] => rest,
+        _ => words,
+    };
+    matches!(
+        words,
+        [
+            "звук" | "музыку",
+            "громче" | "тише" | "погромче" | "потише",
+            ..
+        ] | ["громче" | "тише" | "погромче" | "потише"]
+            | ["громче" | "тише" | "погромче" | "потише", "на" | "в", _, ..]
+            | [
+                "прибавь" | "убавь" | "добавь" | "уменьши" | "увеличь",
+                "звук",
+                ..
+            ]
+            | ["прибавь" | "убавь"]
+            | ["прибавь" | "убавь", "на", _, ..]
+            | ["звук", "на", _, ..]
+            | ["вруби", "на", "всю"]
+    )
+}
 pub fn native_topic(text: &str, names: &[String]) -> bool {
     let text = normalize(text);
     if names.iter().any(|name| normalize(name) == text) {
@@ -48,6 +72,11 @@ pub fn native_topic(text: &str, names: &[String]) -> bool {
         .split(|c: char| !c.is_alphanumeric())
         .filter(|s| !s.is_empty())
         .collect();
+    let command = words.strip_prefix(&["пожалуйста"]).unwrap_or(&words);
+    let command = command.strip_suffix(&["пожалуйста"]).unwrap_or(command);
+    if volume_command(command) {
+        return true;
+    }
     let native_stems = [
         "погод",
         "прогноз",
@@ -94,8 +123,6 @@ pub fn native_topic(text: &str, names: &[String]) -> bool {
     if [
         "сколько градусов",
         "какая температура",
-        "тише",
-        "громче",
         "отмена",
         "отбой",
         "не надо",
@@ -363,6 +390,14 @@ mod tests {
             "Установи термостат на 22",
             "Поставь таймер на пять минут",
             "Сколько времени?",
+            "Алиса, громче на два",
+            "Тише на 2",
+            "Пожалуйста, сделай погромче",
+            "Поставь громче на два, пожалуйста",
+            "Сделай звук тише на один",
+            "Прибавь звук на 20 процентов",
+            "Звук на четыре",
+            "Вруби на всю",
         ] {
             assert!(native_topic(p, &[]), "{p}");
         }
@@ -378,6 +413,7 @@ mod tests {
             "Что такое скорость света?",
             "Расскажи про средневековый замок",
             "Ты ЯндексGPT?",
+            "Почему ночью звук кажется громче?",
         ] {
             assert!(!native_topic(p, &[]), "{p}");
         }

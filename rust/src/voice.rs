@@ -482,13 +482,16 @@ mod routing_tests {
         assert!(rx.try_recv().is_err());
     }
     #[tokio::test]
-    async fn weather_does_not_cancel_native_dialog() {
+    async fn native_requests_do_not_cancel_dialog() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (voice, mut rx) = fixture(port);
-        voice
-            .accept(3, "какая погода завтра", Some("weather-one"))
-            .await;
+        for (text, id) in [
+            ("какая погода завтра", "weather-one"),
+            ("поставь громче на два", "volume-one"),
+        ] {
+            voice.accept(3, text, Some(id)).await;
+        }
         assert!(rx.try_recv().is_err());
         assert!(
             tokio::time::timeout(Duration::from_millis(40), listener.accept())
